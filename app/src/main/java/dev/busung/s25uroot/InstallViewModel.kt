@@ -235,19 +235,24 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     private fun installKernelSu(payloads: VerifiedPayloads) {
         val source = shellQuote(payloads.kernelSu.absolutePath)
+        val moduleStage = payloads.kernelSuModule?.let { module ->
+            " && /system/bin/cp ${shellQuote(module.absolutePath)} " +
+                "/data/local/tmp/android15-6.6_kernelsu-s938b-cze1-kdp.ko"
+        }.orEmpty()
         val stageCommand =
             "/system/bin/cp $source /data/local/tmp/ksud-s25u-kdp && " +
                 "/system/bin/cp $source /data/local/tmp/.ksud-stage && " +
-                "/system/bin/chmod 755 /data/local/tmp/ksud-s25u-kdp /data/local/tmp/.ksud-stage"
+                "/system/bin/chmod 755 /data/local/tmp/ksud-s25u-kdp /data/local/tmp/.ksud-stage" +
+                moduleStage
         val stage = runHelper("-c", stageCommand)
         require(stage.code == 0) { app.getString(R.string.error_ksu_stage, stage.output) }
         appendLog(app.getString(R.string.log_ksu_staged))
 
-        val lateLoad = runHelper("--late-load")
-        require(lateLoad.code == 0) {
-            app.getString(R.string.error_ksu_verify, lateLoad.code, lateLoad.output)
+        val load = runHelper(if (payloads.kernelSuModule != null) "--insmod" else "--late-load")
+        require(load.code == 0) {
+            app.getString(R.string.error_ksu_verify, load.code, load.output)
         }
-        if (lateLoad.output.isNotBlank()) appendLog(lateLoad.output)
+        if (load.output.isNotBlank()) appendLog(load.output)
         storeInstallReceipt()
         appendLog(app.getString(R.string.log_ksu_control_verified))
     }

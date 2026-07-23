@@ -124,4 +124,5 @@
     <string name="kernel_mismatch_body">This phone uses kernel %1$s, but the selected profile targets %2$s. Running it may crash or damage the device.</string>
     <string name="build_mismatch_title">Firmware mismatch</string>
     <string name="build_mismatch_body">This phone uses build %1$s, but the selected profile targets %2$s. Offsets may be incompatible.</string>
+    <string name="artifact_kernelsu_module">KernelSU module</string>
 </resources>

@@ -25,4 +25,5 @@
     <string name="select_device_title">选择支持配置</string><string name="select_device_description">选择本次安装要使用的内核和固件配置。</string><string name="show_my_kernel_only">仅显示我的内核</string><string name="no_matching_kernels">没有与此内核匹配的配置。</string>
     <string name="kernel_mismatch_title">内核不匹配</string><string name="kernel_mismatch_body">当前内核为 %1$s，但所选配置的内核为 %2$s。运行可能导致设备停止响应或损坏。</string>
     <string name="build_mismatch_title">固件不匹配</string><string name="build_mismatch_body">当前版本是 %1$s，但所选配置适用于 %2$s。偏移量可能不兼容。</string>
+    <string name="artifact_kernelsu_module">KernelSU 模块</string>
 </resources>

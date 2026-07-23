@@ -23,5 +23,9 @@ class PayloadRepositoryTest {
         assertEquals(profile.kernelSu.artifact.size, payloads.kernelSu.length())
         assertTrue(payloads.exploit.canRead())
         assertTrue(payloads.kernelSu.canRead())
+        profile.kernelSu.module?.let {
+            assertEquals(it.size, payloads.kernelSuModule?.length())
+            assertTrue(payloads.kernelSuModule?.canRead() == true)
+        }
     }
 }

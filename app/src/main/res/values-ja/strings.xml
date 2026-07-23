@@ -25,4 +25,5 @@
     <string name="select_device_title">対応プロファイルを選択</string><string name="select_device_description">今回のインストールに使用するカーネルとファームウェアプロファイルを選択します。</string><string name="show_my_kernel_only">自分のカーネルのみ表示</string><string name="no_matching_kernels">このカーネルに一致するプロファイルはありません。</string>
     <string name="kernel_mismatch_title">カーネルが一致しません</string><string name="kernel_mismatch_body">現在のカーネルは%1$sですが、選択したプロファイルのカーネルは%2$sです。実行すると端末が停止または破損する可能性があります。</string>
     <string name="build_mismatch_title">ファームウェアが一致しません</string><string name="build_mismatch_body">現在のビルドは%1$sですが、選択したプロファイルは%2$s用です。オフセットに互換性がない可能性があります。</string>
+    <string name="artifact_kernelsu_module">KernelSU モジュール</string>
 </resources>

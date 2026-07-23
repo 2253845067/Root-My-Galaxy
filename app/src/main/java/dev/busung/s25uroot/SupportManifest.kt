@@ -11,6 +11,7 @@ data class KernelSuArtifact(
     val artifact: RemoteArtifact,
     val kmi: String,
     val managerPackage: String,
+    val module: RemoteArtifact? = null,
 )
 
 data class TargetProfile(
@@ -79,6 +80,12 @@ data class SupportManifest(
                                 ),
                                 kmi = kernelSu.getString("kmi"),
                                 managerPackage = kernelSu.getString("managerPackage"),
+                                module = kernelSu.optJSONObject("module")?.let { module ->
+                                    RemoteArtifact(
+                                        url = module.getString("url"),
+                                        size = module.getLong("size"),
+                                    )
+                                },
                             ),
                         ),
                     )

@@ -13,6 +13,7 @@ data class VerifiedPayloads(
     val profile: TargetProfile,
     val exploit: File,
     val kernelSu: File,
+    val kernelSuModule: File?,
 )
 
 class PayloadRepository(private val context: Context) {
@@ -25,6 +26,9 @@ class PayloadRepository(private val context: Context) {
                 artifact = profile.kernelSu.artifact.copy(
                     url = pinArtifactUrl(profile.kernelSu.artifact.url, commit),
                 ),
+                module = profile.kernelSu.module?.let { module ->
+                    module.copy(url = pinArtifactUrl(module.url, commit))
+                },
             ),
         ) }
     }
@@ -51,9 +55,18 @@ class PayloadRepository(private val context: Context) {
             context.getString(R.string.artifact_kernelsu),
             onProgress,
         )
+        val kernelSuModule = profile.kernelSu.module?.let { module ->
+            downloadArtifact(
+                module,
+                File(directory, "android15-6.6_kernelsu-s938b-cze1-kdp.ko"),
+                context.getString(R.string.artifact_kernelsu_module),
+                onProgress,
+            )
+        }
         Os.chmod(exploit.absolutePath, 0b100100100)
         Os.chmod(kernelSu.absolutePath, 0b100100100)
-        return VerifiedPayloads(profile, exploit, kernelSu)
+        kernelSuModule?.let { Os.chmod(it.absolutePath, 0b100100100) }
+        return VerifiedPayloads(profile, exploit, kernelSu, kernelSuModule)
     }
 
     private fun downloadArtifact(
