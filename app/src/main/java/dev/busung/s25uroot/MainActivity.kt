@@ -1377,7 +1377,7 @@ private fun SideChoiceMenu(
 
 private const val MENU_EXIT_ANIMATION_MILLIS = 180
 private const val MENU_EXIT_WAIT_MILLIS = 200L
-private const val ROOT_MY_GALAXY_URL = "https://github.com/BuSung-dev/Root-My-Galaxy"
+private const val ROOT_MY_GALAXY_URL = "https://github.com/2253845067/Root-My-Galaxy"
 
 @Composable
 private fun languageLabel(tag: String): String = when {

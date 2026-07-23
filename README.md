@@ -8,10 +8,10 @@ supported Samsung firmware builds. The application itself is kept separate
 from device offsets, native exploit payloads, and KernelSU build artifacts.
 
 
-[Latest release](https://github.com/BuSung-dev/Root-My-Galaxy/releases)
+[Latest release](https://github.com/2253845067/Root-My-Galaxy/releases)
 
 The device feed and native payloads are maintained in
-[Root-My-Galaxy-Payloads](https://github.com/BuSung-dev/Root-My-Galaxy-Payloads).
+[Root-My-Galaxy-Payloads](https://github.com/2253845067/Root-My-Galaxy-Payloads).
 
 ## Application
 
@@ -23,6 +23,11 @@ The device feed and native payloads are maintained in
 The app automatically selects an exact match for the kernel release,
 full build display ID, SDK, ABI, and page size. Advanced mode can select a
 profile manually and presents separate kernel-release and build warnings.
+
+The S938B profile `pa3q-S938BXXS9CZE1` has been validated on a matching
+`SM-S938B` device. Its payloads and KernelSU artifacts are published in the
+companion `Root-My-Galaxy-Payloads` repository; the bundled arm64 helper is the
+tested `cve-2026-43499-root` build for that profile.
 
 ## Build
 
