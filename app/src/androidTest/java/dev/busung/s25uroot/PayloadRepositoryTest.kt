@@ -16,7 +16,10 @@ class PayloadRepositoryTest {
         val snapshot = DeviceSnapshot.current()
         val profile = repository.resolveTarget(snapshot)
         assertEquals(snapshot.kernelRelease, profile.kernelRelease)
-        assertEquals(snapshot.kernelBuildVersion, profile.kernelBuildVersion)
+        assertEquals(
+            profile.kernelBuildVersion.trim().replace(Regex("\\s+"), " "),
+            snapshot.kernelBuildVersion.trim().replace(Regex("\\s+"), " "),
+        )
 
         val payloads = repository.download(profile) { }
         assertEquals(profile.exploit.size, payloads.exploit.length())

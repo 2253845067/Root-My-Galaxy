@@ -29,9 +29,13 @@ data class TargetProfile(
     val exploit: RemoteArtifact,
     val kernelSu: KernelSuArtifact,
 ) {
+    private fun normalizedKernelBuildVersion(value: String): String =
+        value.trim().replace(Regex("\\s+"), " ")
+
     fun matchesKernel(snapshot: DeviceSnapshot): Boolean =
         kernelRelease == snapshot.kernelRelease &&
-            kernelBuildVersion == snapshot.kernelBuildVersion
+            normalizedKernelBuildVersion(kernelBuildVersion) ==
+                normalizedKernelBuildVersion(snapshot.kernelBuildVersion)
 
     fun matches(snapshot: DeviceSnapshot): Boolean =
         matchesKernel(snapshot) &&
