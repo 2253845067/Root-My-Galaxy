@@ -248,7 +248,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         require(stage.code == 0) { app.getString(R.string.error_ksu_stage, stage.output) }
         appendLog(app.getString(R.string.log_ksu_staged))
 
-        val load = runHelper(if (payloads.kernelSuModule != null) "--insmod" else "--late-load")
+        val load = if (payloads.kernelSuModule != null) {
+            runHelper("--insmod", stdin = payloads.kernelSuModule)
+        } else {
+            runHelper("--late-load")
+        }
         require(load.code == 0) {
             app.getString(R.string.error_ksu_verify, load.code, load.output)
         }
@@ -307,8 +311,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     private fun helperFile() = File(app.applicationInfo.nativeLibraryDir, "libcve43499root.so")
 
-    private fun runHelper(vararg arguments: String): CommandResult {
+    private fun runHelper(vararg arguments: String, stdin: File? = null): CommandResult {
         val process = ProcessBuilder(listOf(helperFile().absolutePath) + arguments)
+            .apply { stdin?.let { redirectInput(it) } }
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.bufferedReader().use { it.readText() }
