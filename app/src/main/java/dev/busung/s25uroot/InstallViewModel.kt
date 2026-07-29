@@ -174,7 +174,12 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             helper.absolutePath,
             logFile.absolutePath,
         ).redirectErrorStream(true)
-        cachedP0Offset(bootToken)?.let { processBuilder.environment()[P0_OFFSET_ENV] = it }
+        processBuilder.environment().apply {
+            put("EXPLOIT_ATTEMPTS", "24")
+            put("P0_ATTEMPT_TIMEOUT_SEC", "45")
+            put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", "120")
+            cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
+        }
         val process = processBuilder.start()
 
         try {
