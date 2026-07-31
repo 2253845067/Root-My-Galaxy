@@ -21,11 +21,7 @@ class PayloadRepository(private val context: Context) {
         val manifestBytes = downloadBytes(rawUrl(commit, "support/targets-v3.json"), MAX_MANIFEST_BYTES)
         return SupportManifest.parse(manifestBytes).targets.map { profile -> profile.copy(
             exploit = profile.exploit.copy(url = pinArtifactUrl(profile.exploit.url, commit)),
-            kernelSu = profile.kernelSu.copy(
-                artifact = profile.kernelSu.artifact.copy(
-                    url = pinArtifactUrl(profile.kernelSu.artifact.url, commit),
-                ),
-            ),
+            kernelSu = profile.kernelSu.copy(url = pinArtifactUrl(profile.kernelSu.url, commit)),
         ) }
     }
 
@@ -46,7 +42,7 @@ class PayloadRepository(private val context: Context) {
             onProgress,
         )
         val kernelSu = downloadArtifact(
-            profile.kernelSu.artifact,
+            profile.kernelSu,
             File(directory, "ksud-s25u-kdp"),
             context.getString(R.string.artifact_kernelsu),
             onProgress,
