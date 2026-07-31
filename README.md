@@ -20,11 +20,10 @@ The device feed and native payloads are maintained in
 <img width="200" alt="KakaoTalk_20260718_171127319" src="https://github.com/user-attachments/assets/8dde0443-12cf-4058-ba76-0337aefb92a0" />
 <img width="200" alt="KakaoTalk_20260718_171030202" src="https://github.com/user-attachments/assets/f656e8af-60a6-4fcb-a3db-d4232bede613" />
 
-The app selects a payload whose supported-device list, kernel rule, security
-patch range, SDK, ABI, and page size all match the phone. One payload can cover
-multiple regional models when the same native exploit is verified across those
-builds. Advanced mode can select a payload manually and presents separate
-kernel, device, and firmware warnings.
+The app selects a payload whose model list and exact build or security-patch
+range match the phone. One payload can cover multiple regional models when the
+same native exploit is verified across those builds. Advanced mode filters the
+catalog by model and allows manual selection with device and build warnings.
 
 ## Build
 

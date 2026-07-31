@@ -188,7 +188,6 @@ private enum class AppPage(@StringRes val label: Int, val icon: ImageVector) {
 private data class LanguageOption(@StringRes val label: Int, val tag: String)
 
 private enum class CompatibilityWarning {
-    Kernel,
     Device,
     Build,
 }
@@ -235,7 +234,6 @@ private fun RootApp(
                 selectedProfile = profile
                 showTargetPicker = false
                 compatibilityWarning = when {
-                    !profile.matchesKernel(device) -> CompatibilityWarning.Kernel
                     !profile.matchesDevice(device) -> CompatibilityWarning.Device
                     !profile.matchesBuild(device) -> CompatibilityWarning.Build
                     else -> null
@@ -257,7 +255,6 @@ private fun RootApp(
                 DialogDimAmount(0.24f)
                 Text(
                     stringResource(when (warning) {
-                        CompatibilityWarning.Kernel -> R.string.kernel_mismatch_title
                         CompatibilityWarning.Device -> R.string.device_mismatch_title
                         CompatibilityWarning.Build -> R.string.build_mismatch_title
                     }),
@@ -266,11 +263,6 @@ private fun RootApp(
             text = {
                 Text(
                     when (warning) {
-                        CompatibilityWarning.Kernel -> stringResource(
-                            R.string.kernel_mismatch_body,
-                            device.kernelRelease,
-                            profile.kernelRelease.description,
-                        )
                         CompatibilityWarning.Device -> stringResource(
                             R.string.device_mismatch_body,
                             device.model,
@@ -288,11 +280,6 @@ private fun RootApp(
                 FilledTonalButton(
                     onClick = {
                         compatibilityWarning = when (warning) {
-                            CompatibilityWarning.Kernel -> when {
-                                !profile.matchesDevice(device) -> CompatibilityWarning.Device
-                                !profile.matchesBuild(device) -> CompatibilityWarning.Build
-                                else -> null
-                            }
                             CompatibilityWarning.Device -> if (!profile.matchesBuild(device)) {
                                 CompatibilityWarning.Build
                             } else {
@@ -918,11 +905,11 @@ private fun TargetSelectionSheet(
     onRetry: () -> Unit,
     onNext: (TargetProfile) -> Unit,
 ) {
-    var showOnlyMyKernel by remember { mutableStateOf(true) }
+    var showOnlyMyModel by remember { mutableStateOf(true) }
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
-    val visibleProfiles = remember(catalog.profiles, showOnlyMyKernel, device) {
-        if (showOnlyMyKernel) {
-            catalog.profiles.filter { it.matchesKernel(device) }
+    val visibleProfiles = remember(catalog.profiles, showOnlyMyModel, device) {
+        if (showOnlyMyModel) {
+            catalog.profiles.filter { it.matchesDevice(device) }
         } else {
             catalog.profiles
         }
@@ -952,11 +939,11 @@ private fun TargetSelectionSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .toggleable(
-                        value = showOnlyMyKernel,
+                        value = showOnlyMyModel,
                         role = Role.Checkbox,
                         onValueChange = { enabled ->
-                            showOnlyMyKernel = enabled
-                            if (enabled && selectedProfile?.matchesKernel(device) == false) {
+                            showOnlyMyModel = enabled
+                            if (enabled && selectedProfile?.matchesDevice(device) == false) {
                                 selectedProfileId = null
                             }
                         },
@@ -965,8 +952,8 @@ private fun TargetSelectionSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Checkbox(checked = showOnlyMyKernel, onCheckedChange = null)
-                Text(stringResource(R.string.show_my_kernel_only), style = MaterialTheme.typography.titleMedium)
+                Checkbox(checked = showOnlyMyModel, onCheckedChange = null)
+                Text(stringResource(R.string.show_my_model_only), style = MaterialTheme.typography.titleMedium)
             }
 
             when {
@@ -987,7 +974,7 @@ private fun TargetSelectionSheet(
                     }
                 }
                 visibleProfiles.isEmpty() -> Text(
-                    stringResource(R.string.no_matching_kernels),
+                    stringResource(R.string.no_matching_models),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1000,6 +987,12 @@ private fun TargetSelectionSheet(
                 ) {
                     items(visibleProfiles, key = TargetProfile::profileId) { profile ->
                         val selected = selectedProfileId == profile.profileId
+                        val matchingModel = profile.models.firstOrNull {
+                            it.equals(device.model, ignoreCase = true)
+                        }
+                        val modelLabel = matchingModel ?: profile.models.take(3).joinToString().let {
+                            if (profile.models.size > 3) "$it +${profile.models.size - 3}" else it
+                        }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.large,
@@ -1028,13 +1021,8 @@ private fun TargetSelectionSheet(
                                         style = MaterialTheme.typography.titleMedium,
                                     )
                                     Text(
-                                        profile.kernelRelease.description,
+                                        modelLabel,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        "${profile.supportedDevices.size} models · ${profile.buildDescription}",
-                                        style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
