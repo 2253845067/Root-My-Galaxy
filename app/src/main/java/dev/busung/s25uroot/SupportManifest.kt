@@ -12,37 +12,29 @@ data class TargetProfile(
     val profileId: String,
     val displayName: String,
     val models: Set<String>,
-    val builds: Set<String>,
-    val securityPatchMonths: Set<String>,
+    val kernelVersions: Set<String>,
     val exploit: RemoteArtifact,
     val kernelSu: RemoteArtifact,
 ) {
     init {
         require(models.isNotEmpty()) { "Payload must support at least one model" }
-        require(builds.isNotEmpty() || securityPatchMonths.isNotEmpty()) {
-            "Payload must restrict builds or security patch months"
-        }
+        require(kernelVersions.isNotEmpty()) { "Payload must support at least one kernel version" }
     }
 
     fun matchesDevice(snapshot: DeviceSnapshot): Boolean =
         models.any { it.equals(snapshot.model, ignoreCase = true) }
 
-    fun matchesBuild(snapshot: DeviceSnapshot): Boolean =
-        (builds.isEmpty() || snapshot.buildId in builds) &&
-            (securityPatchMonths.isEmpty() || snapshot.securityPatchMonth in securityPatchMonths)
+    fun matchesKernelVersion(snapshot: DeviceSnapshot): Boolean =
+        snapshot.kernelVersion in kernelVersions
 
     fun matches(snapshot: DeviceSnapshot): Boolean =
-        matchesDevice(snapshot) && matchesBuild(snapshot)
+        matchesDevice(snapshot) && matchesKernelVersion(snapshot)
 
     val supportedModels: String
         get() = models.joinToString()
 
-    val buildDescription: String
-        get() = if (builds.isNotEmpty()) {
-            builds.joinToString()
-        } else {
-            securityPatchMonths.joinToString()
-        }
+    val supportedKernelVersions: String
+        get() = kernelVersions.joinToString()
 }
 
 data class SupportManifest(
@@ -65,9 +57,7 @@ data class SupportManifest(
                             profileId = payload.getString("payloadId"),
                             displayName = payload.getString("displayName"),
                             models = payload.getJSONArray("models").strings(),
-                            builds = payload.optJSONArray("builds")?.strings().orEmpty(),
-                            securityPatchMonths = payload
-                                .optJSONArray("securityPatchMonths")?.strings().orEmpty(),
+                            kernelVersions = payload.getJSONArray("kernelVersions").strings(),
                             exploit = RemoteArtifact(
                                 url = exploit.getString("url"),
                                 size = exploit.getLong("size"),

@@ -189,7 +189,7 @@ private data class LanguageOption(@StringRes val label: Int, val tag: String)
 
 private enum class CompatibilityWarning {
     Device,
-    Build,
+    KernelVersion,
 }
 
 private val languageOptions = listOf(
@@ -235,7 +235,7 @@ private fun RootApp(
                 showTargetPicker = false
                 compatibilityWarning = when {
                     !profile.matchesDevice(device) -> CompatibilityWarning.Device
-                    !profile.matchesBuild(device) -> CompatibilityWarning.Build
+                    !profile.matchesKernelVersion(device) -> CompatibilityWarning.KernelVersion
                     else -> null
                 }
                 if (compatibilityWarning == null) showInstallConfirmation = true
@@ -256,7 +256,7 @@ private fun RootApp(
                 Text(
                     stringResource(when (warning) {
                         CompatibilityWarning.Device -> R.string.device_mismatch_title
-                        CompatibilityWarning.Build -> R.string.build_mismatch_title
+                        CompatibilityWarning.KernelVersion -> R.string.kernel_version_mismatch_title
                     }),
                 )
             },
@@ -268,10 +268,10 @@ private fun RootApp(
                             device.model,
                             profile.supportedModels,
                         )
-                        CompatibilityWarning.Build -> stringResource(
-                            R.string.build_mismatch_body,
-                            "${device.buildId} / ${device.securityPatch}",
-                            profile.buildDescription,
+                        CompatibilityWarning.KernelVersion -> stringResource(
+                            R.string.kernel_version_mismatch_body,
+                            device.kernelVersion,
+                            profile.supportedKernelVersions,
                         )
                     },
                 )
@@ -280,12 +280,12 @@ private fun RootApp(
                 FilledTonalButton(
                     onClick = {
                         compatibilityWarning = when (warning) {
-                            CompatibilityWarning.Device -> if (!profile.matchesBuild(device)) {
-                                CompatibilityWarning.Build
+                            CompatibilityWarning.Device -> if (!profile.matchesKernelVersion(device)) {
+                                CompatibilityWarning.KernelVersion
                             } else {
                                 null
                             }
-                            CompatibilityWarning.Build -> null
+                            CompatibilityWarning.KernelVersion -> null
                         }
                         if (compatibilityWarning == null) {
                             showInstallConfirmation = true
@@ -905,11 +905,11 @@ private fun TargetSelectionSheet(
     onRetry: () -> Unit,
     onNext: (TargetProfile) -> Unit,
 ) {
-    var showOnlyMyModel by remember { mutableStateOf(true) }
+    var showOnlyMyDevice by remember { mutableStateOf(true) }
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
-    val visibleProfiles = remember(catalog.profiles, showOnlyMyModel, device) {
-        if (showOnlyMyModel) {
-            catalog.profiles.filter { it.matchesDevice(device) }
+    val visibleProfiles = remember(catalog.profiles, showOnlyMyDevice, device) {
+        if (showOnlyMyDevice) {
+            catalog.profiles.filter { it.matches(device) }
         } else {
             catalog.profiles
         }
@@ -939,11 +939,11 @@ private fun TargetSelectionSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .toggleable(
-                        value = showOnlyMyModel,
+                        value = showOnlyMyDevice,
                         role = Role.Checkbox,
                         onValueChange = { enabled ->
-                            showOnlyMyModel = enabled
-                            if (enabled && selectedProfile?.matchesDevice(device) == false) {
+                            showOnlyMyDevice = enabled
+                            if (enabled && selectedProfile?.matches(device) == false) {
                                 selectedProfileId = null
                             }
                         },
@@ -952,8 +952,8 @@ private fun TargetSelectionSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Checkbox(checked = showOnlyMyModel, onCheckedChange = null)
-                Text(stringResource(R.string.show_my_model_only), style = MaterialTheme.typography.titleMedium)
+                Checkbox(checked = showOnlyMyDevice, onCheckedChange = null)
+                Text(stringResource(R.string.show_my_device_only), style = MaterialTheme.typography.titleMedium)
             }
 
             when {
@@ -974,7 +974,7 @@ private fun TargetSelectionSheet(
                     }
                 }
                 visibleProfiles.isEmpty() -> Text(
-                    stringResource(R.string.no_matching_models),
+                    stringResource(R.string.no_matching_devices),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
