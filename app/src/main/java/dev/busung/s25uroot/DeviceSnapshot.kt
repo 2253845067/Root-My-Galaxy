@@ -9,11 +9,9 @@ data class DeviceSnapshot(
     val model: String,
     val device: String,
     val kernelRelease: String,
-    val kernelBuildVersion: String,
     val buildId: String,
     val fingerprint: String,
     val androidRelease: String,
-    val securityPatch: String,
     val sdk: Int,
     val abi: String,
     val pageSize: Long,
@@ -21,8 +19,8 @@ data class DeviceSnapshot(
     val targetLabel: String
         get() = "$kernelRelease / $buildId"
 
-    val securityPatchMonth: String
-        get() = securityPatch.take(7)
+    val kernelVersion: String
+        get() = kernelRelease.takeWhile { it.isDigit() || it == '.' }
 
     companion object {
         fun current(): DeviceSnapshot {
@@ -32,11 +30,9 @@ data class DeviceSnapshot(
                 model = Build.MODEL,
                 device = Build.DEVICE,
                 kernelRelease = uname.release,
-                kernelBuildVersion = uname.version,
                 buildId = Build.DISPLAY,
                 fingerprint = Build.FINGERPRINT,
                 androidRelease = Build.VERSION.RELEASE,
-                securityPatch = Build.VERSION.SECURITY_PATCH,
                 sdk = Build.VERSION.SDK_INT,
                 abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
                 pageSize = Os.sysconf(OsConstants._SC_PAGESIZE),
