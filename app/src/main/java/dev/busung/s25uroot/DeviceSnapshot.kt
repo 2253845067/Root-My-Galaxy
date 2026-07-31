@@ -13,12 +13,16 @@ data class DeviceSnapshot(
     val buildId: String,
     val fingerprint: String,
     val androidRelease: String,
+    val securityPatch: String,
     val sdk: Int,
     val abi: String,
     val pageSize: Long,
 ) {
     val targetLabel: String
         get() = "$kernelRelease / $buildId"
+
+    val securityPatchMonth: String
+        get() = securityPatch.take(7)
 
     companion object {
         fun current(): DeviceSnapshot {
@@ -32,6 +36,7 @@ data class DeviceSnapshot(
                 buildId = Build.DISPLAY,
                 fingerprint = Build.FINGERPRINT,
                 androidRelease = Build.VERSION.RELEASE,
+                securityPatch = Build.VERSION.SECURITY_PATCH,
                 sdk = Build.VERSION.SDK_INT,
                 abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
                 pageSize = Os.sysconf(OsConstants._SC_PAGESIZE),
