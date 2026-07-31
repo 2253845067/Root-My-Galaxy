@@ -108,10 +108,8 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 TargetCatalogUiState(
                     profiles = repository.loadTargets().sortedWith(
                         compareBy(
-                            TargetProfile::kernelRelease,
-                            TargetProfile::kernelBuildVersion,
-                            TargetProfile::model,
-                            TargetProfile::buildDisplay,
+                            TargetProfile::displayName,
+                            TargetProfile::profileId,
                         ),
                     ),
                 )

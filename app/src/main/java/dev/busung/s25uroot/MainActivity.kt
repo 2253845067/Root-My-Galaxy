@@ -189,6 +189,7 @@ private data class LanguageOption(@StringRes val label: Int, val tag: String)
 
 private enum class CompatibilityWarning {
     Kernel,
+    Device,
     Build,
 }
 
@@ -235,7 +236,8 @@ private fun RootApp(
                 showTargetPicker = false
                 compatibilityWarning = when {
                     !profile.matchesKernel(device) -> CompatibilityWarning.Kernel
-                    profile.buildDisplay != device.buildId -> CompatibilityWarning.Build
+                    !profile.matchesDevice(device) -> CompatibilityWarning.Device
+                    !profile.matchesBuild(device) -> CompatibilityWarning.Build
                     else -> null
                 }
                 if (compatibilityWarning == null) showInstallConfirmation = true
@@ -254,38 +256,51 @@ private fun RootApp(
             title = {
                 DialogDimAmount(0.24f)
                 Text(
-                    stringResource(
-                        if (warning == CompatibilityWarning.Kernel) {
-                            R.string.kernel_mismatch_title
-                        } else {
-                            R.string.build_mismatch_title
-                        },
-                    ),
+                    stringResource(when (warning) {
+                        CompatibilityWarning.Kernel -> R.string.kernel_mismatch_title
+                        CompatibilityWarning.Device -> R.string.device_mismatch_title
+                        CompatibilityWarning.Build -> R.string.build_mismatch_title
+                    }),
                 )
             },
             text = {
                 Text(
-                    if (warning == CompatibilityWarning.Kernel) {
-                        stringResource(
+                    when (warning) {
+                        CompatibilityWarning.Kernel -> stringResource(
                             R.string.kernel_mismatch_body,
-                            device.kernelBuildVersion,
-                            profile.kernelBuildVersion,
+                            device.kernelRelease,
+                            profile.kernelRelease.description,
                         )
-                    } else {
-                        stringResource(R.string.build_mismatch_body, device.buildId, profile.buildDisplay)
+                        CompatibilityWarning.Device -> stringResource(
+                            R.string.device_mismatch_body,
+                            device.model,
+                            profile.supportedModels,
+                        )
+                        CompatibilityWarning.Build -> stringResource(
+                            R.string.build_mismatch_body,
+                            "${device.buildId} / ${device.securityPatch}",
+                            profile.buildDescription,
+                        )
                     },
                 )
             },
             confirmButton = {
                 FilledTonalButton(
                     onClick = {
-                        if (
-                            warning == CompatibilityWarning.Kernel &&
-                            profile.buildDisplay != device.buildId
-                        ) {
-                            compatibilityWarning = CompatibilityWarning.Build
-                        } else {
-                            compatibilityWarning = null
+                        compatibilityWarning = when (warning) {
+                            CompatibilityWarning.Kernel -> when {
+                                !profile.matchesDevice(device) -> CompatibilityWarning.Device
+                                !profile.matchesBuild(device) -> CompatibilityWarning.Build
+                                else -> null
+                            }
+                            CompatibilityWarning.Device -> if (!profile.matchesBuild(device)) {
+                                CompatibilityWarning.Build
+                            } else {
+                                null
+                            }
+                            CompatibilityWarning.Build -> null
+                        }
+                        if (compatibilityWarning == null) {
                             showInstallConfirmation = true
                         }
                     },
@@ -1009,16 +1024,16 @@ private fun TargetSelectionSheet(
                                 RadioButton(selected = selected, onClick = null)
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        profile.kernelRelease,
+                                        profile.displayName,
                                         style = MaterialTheme.typography.titleMedium,
                                     )
                                     Text(
-                                        "${profile.manufacturer} ${profile.model} · ${profile.buildDisplay}",
+                                        profile.kernelRelease.description,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Text(
-                                        profile.profileId,
+                                        "${profile.supportedDevices.size} models · ${profile.buildDescription}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
