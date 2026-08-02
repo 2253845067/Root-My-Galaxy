@@ -198,6 +198,7 @@ private val languageOptions = listOf(
     LanguageOption(R.string.language_english, "en"),
     LanguageOption(R.string.language_japanese, "ja"),
     LanguageOption(R.string.language_chinese, "zh-CN"),
+    LanguageOption(R.string.language_turkish, "tr"),
 )
 
 private const val KERNEL_SU_MANAGER_URL =
@@ -1388,6 +1389,7 @@ private fun languageLabel(tag: String): String = when {
     tag.startsWith("en") -> stringResource(R.string.language_english)
     tag.startsWith("ja") -> stringResource(R.string.language_japanese)
     tag.startsWith("zh") -> stringResource(R.string.language_chinese)
+    tag.startsWith("tr") -> stringResource(R.string.language_turkish)
     else -> stringResource(R.string.language_system)
 }
 
