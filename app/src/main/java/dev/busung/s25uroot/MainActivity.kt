@@ -198,6 +198,7 @@ private val languageOptions = listOf(
     LanguageOption(R.string.language_english, "en"),
     LanguageOption(R.string.language_japanese, "ja"),
     LanguageOption(R.string.language_chinese, "zh-CN"),
+    LanguageOption(R.string.language_chinese_traditional, "zh-TW"),
     LanguageOption(R.string.language_turkish, "tr"),
 )
 
@@ -1388,6 +1389,7 @@ private fun languageLabel(tag: String): String = when {
     tag.startsWith("ko") -> stringResource(R.string.language_korean)
     tag.startsWith("en") -> stringResource(R.string.language_english)
     tag.startsWith("ja") -> stringResource(R.string.language_japanese)
+    tag.startsWith("zh-TW") -> stringResource(R.string.language_chinese_traditional)
     tag.startsWith("zh") -> stringResource(R.string.language_chinese)
     tag.startsWith("tr") -> stringResource(R.string.language_turkish)
     else -> stringResource(R.string.language_system)
