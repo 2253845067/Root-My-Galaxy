@@ -37,6 +37,7 @@
     <string name="language_chinese_traditional" translatable="false">繁體中文</string>
     <string name="language_turkish" translatable="false">Türkçe</string>
     <string name="language_russian" translatable="false">Русский</string>
+    <string name="language_vietnamese" translatable="false">Tiếng Việt</string>
     <string name="color_dynamic">System dynamic</string>
     <string name="color_blue">Blue</string>
     <string name="color_violet">Violet</string>
