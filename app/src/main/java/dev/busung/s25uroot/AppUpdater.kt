@@ -26,33 +26,36 @@ object AppUpdater {
     suspend fun fetchLatestRelease(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
             val connection = URL("$GITHUB_API/releases/latest").openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("User-Agent", "RootMyGalaxy/${BuildConfig.VERSION_NAME}")
-            connection.setRequestProperty("Accept", "application/vnd.github+json")
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 10_000
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
+            try {
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "RootMyGalaxy/${BuildConfig.VERSION_NAME}")
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 10_000
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
 
-            val json = JSONObject(body)
-            val tag = json.optString("tag_name").trim().removePrefix("v")
-            if (tag.isBlank()) return@withContext null
-            var apkUrl: String? = null
-            json.optJSONArray("assets")?.let { assets ->
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    if (asset.optString("name").endsWith(".apk")) {
-                        apkUrl = asset.optString("browser_download_url").ifEmpty { null }
-                        break
+                val json = JSONObject(body)
+                val tag = json.optString("tag_name").trim().removePrefix("v")
+                if (tag.isBlank()) return@withContext null
+                var apkUrl: String? = null
+                json.optJSONArray("assets")?.let { assets ->
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        if (asset.optString("name").endsWith(".apk")) {
+                            apkUrl = asset.optString("browser_download_url").ifEmpty { null }
+                            break
+                        }
                     }
                 }
+                UpdateInfo(
+                    versionName = tag,
+                    apkUrl = apkUrl,
+                    releaseUrl = json.optString("html_url").ifEmpty { RELEASES_PAGE },
+                )
+            } finally {
+                connection.disconnect()
             }
-            UpdateInfo(
-                versionName = tag,
-                apkUrl = apkUrl,
-                releaseUrl = json.optString("html_url").ifEmpty { RELEASES_PAGE },
-            )
         } catch (_: Exception) {
             null
         }
@@ -69,38 +72,39 @@ object AppUpdater {
         url: String,
         onProgress: (Float) -> Unit = {},
     ): File? = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val target = File(dir, "update.apk")
         try {
-            val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-            val target = File(dir, "update.apk")
             val connection = URL(url).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("User-Agent", "RootMyGalaxy/${BuildConfig.VERSION_NAME}")
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
-            val total = connection.contentLength
-            val buffer = ByteArray(64 * 1024)
-            var downloaded = 0L
-            connection.inputStream.use { input ->
-                target.outputStream().use { output ->
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-                        if (total > 0) {
-                            onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+            try {
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "RootMyGalaxy/${BuildConfig.VERSION_NAME}")
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+                val total = connection.contentLength
+                val buffer = ByteArray(64 * 1024)
+                var downloaded = 0L
+                connection.inputStream.use { input ->
+                    target.outputStream().use { output ->
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            if (total > 0) {
+                                onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+                            }
                         }
                     }
                 }
+                if (target.length() == 0L) return@withContext null
+                target
+            } finally {
+                connection.disconnect()
             }
-            connection.disconnect()
-            if (target.length() == 0L) {
-                target.delete()
-                return@withContext null
-            }
-            target
         } catch (_: Exception) {
+            target.delete()
             null
         }
     }

@@ -86,6 +86,7 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
@@ -111,7 +112,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -144,7 +144,6 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.busung.s25uroot.ui.theme.RootMyGalaxyTheme
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -289,11 +288,12 @@ private fun RootApp(
     var selectedProfile by remember { mutableStateOf<TargetProfile?>(null) }
     var compatibilityWarning by remember { mutableStateOf<CompatibilityWarning?>(null) }
     val device = remember { DeviceSnapshot.current() }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
     var updateCardDismissed by remember { mutableStateOf(false) }
     val checkForUpdate: () -> Unit = {
-        if (updateStatus !is UpdateStatus.Checking) {
+        if (updateStatus !is UpdateStatus.Checking && updateStatus !is UpdateStatus.Downloading) {
             updateStatus = UpdateStatus.Checking
             scope.launch {
                 val info = AppUpdater.fetchLatestRelease()
@@ -303,6 +303,24 @@ private fun RootApp(
                         UpdateStatus.Available(info)
                     else -> UpdateStatus.UpToDate
                 }
+            }
+        }
+    }
+    val startDownload: (UpdateInfo) -> Unit = { info ->
+        val apkUrl = info.apkUrl
+        if (apkUrl == null) {
+            AppUpdater.openReleasesPage(context)
+        } else {
+            updateStatus = UpdateStatus.Downloading(info, 0f)
+            scope.launch {
+                val apk = AppUpdater.downloadApk(context, apkUrl) { progress ->
+                    updateStatus = UpdateStatus.Downloading(info, progress)
+                }
+                if (apk == null || !AppUpdater.installApk(context, apk)) {
+                    Toast.makeText(context, context.getString(R.string.updater_download_failed), Toast.LENGTH_SHORT).show()
+                    AppUpdater.openReleasesPage(context)
+                }
+                updateStatus = UpdateStatus.Available(info)
             }
         }
     }
@@ -446,6 +464,7 @@ private fun RootApp(
                     updateStatus = updateStatus,
                     updateCardDismissed = updateCardDismissed,
                     onDismissUpdateCard = { updateCardDismissed = true },
+                    onStartDownload = startDownload,
                     onInstall = {
                         selectedProfile = null
                         if (advancedMode) {
@@ -469,6 +488,7 @@ private fun RootApp(
                     shizukuMode = shizukuMode,
                     updateStatus = updateStatus,
                     onCheckForUpdate = checkForUpdate,
+                    onStartDownload = startDownload,
                     onAccentColorChanged = onAccentColorChanged,
                     onThemeModeChanged = onThemeModeChanged,
                     onAdvancedModeChanged = onAdvancedModeChanged,
@@ -493,6 +513,7 @@ private fun OverviewPage(
     updateStatus: UpdateStatus,
     updateCardDismissed: Boolean,
     onDismissUpdateCard: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
     onInstall: () -> Unit,
 ) {
     LazyColumn(
@@ -529,8 +550,17 @@ private fun OverviewPage(
                 )
             }
         }
-        if (updateStatus is UpdateStatus.Available && !updateCardDismissed) {
-            item { UpdateCard(updateStatus.info, onDismiss = onDismissUpdateCard) }
+        if (
+            !updateCardDismissed &&
+            (updateStatus is UpdateStatus.Available || updateStatus is UpdateStatus.Downloading)
+        ) {
+            item {
+                UpdateCard(
+                    status = updateStatus,
+                    onDismiss = onDismissUpdateCard,
+                    onStartDownload = onStartDownload,
+                )
+            }
         }
         item { InstallStatusCard(installState, onInstall) }
         item { DeviceCard(device) }
@@ -542,40 +572,23 @@ private sealed interface UpdateStatus {
     data object Idle : UpdateStatus
     data object Checking : UpdateStatus
     data class Available(val info: UpdateInfo) : UpdateStatus
+    data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateStatus
     data object UpToDate : UpdateStatus
     data object Failed : UpdateStatus
 }
 
-private fun launchUpdateDownload(
-    context: Context,
-    scope: CoroutineScope,
-    info: UpdateInfo,
-    downloadFailedMessage: String,
-    onDownloadingChange: (Boolean) -> Unit,
-    onProgress: (Float) -> Unit,
-) {
-    val apkUrl = info.apkUrl
-    if (apkUrl == null) {
-        AppUpdater.openReleasesPage(context)
-        return
-    }
-    onDownloadingChange(true)
-    scope.launch {
-        val apk = AppUpdater.downloadApk(context, apkUrl, onProgress = onProgress)
-        onDownloadingChange(false)
-        if (apk != null && AppUpdater.installApk(context, apk)) return@launch
-        Toast.makeText(context, downloadFailedMessage, Toast.LENGTH_SHORT).show()
-        AppUpdater.openReleasesPage(context)
-    }
-}
-
 @Composable
-private fun UpdateCard(info: UpdateInfo, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val downloadFailed = stringResource(R.string.updater_download_failed)
-    var downloading by remember { mutableStateOf(false) }
-    var progress by remember { mutableFloatStateOf(0f) }
+private fun UpdateCard(
+    status: UpdateStatus,
+    onDismiss: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
+) {
+    val info = when (status) {
+        is UpdateStatus.Available -> status.info
+        is UpdateStatus.Downloading -> status.info
+        else -> null
+    }
+    if (info == null) return
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -617,34 +630,25 @@ private fun UpdateCard(info: UpdateInfo, onDismiss: () -> Unit) {
                 text = stringResource(R.string.updater_available_body, info.versionName),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (downloading) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = LocalContentColor.current,
-                    trackColor = LocalContentColor.current.copy(alpha = 0.2f),
-                    drawStopIndicator = {},
-                )
-                Text(
-                    text = stringResource(R.string.updater_downloading),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LocalContentColor.current.copy(alpha = 0.78f),
-                )
-            } else {
-                FilledTonalButton(
-                    onClick = {
-                        progress = 0f
-                        launchUpdateDownload(
-                            context = context,
-                            scope = scope,
-                            info = info,
-                            downloadFailedMessage = downloadFailed,
-                            onDownloadingChange = { downloading = it },
-                            onProgress = { p -> scope.launch { progress = p } },
-                        )
-                    },
-                ) {
-                    Text(stringResource(R.string.updater_button_download))
+            when (status) {
+                is UpdateStatus.Downloading -> {
+                    LinearProgressIndicator(
+                        progress = { status.progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = LocalContentColor.current,
+                        trackColor = LocalContentColor.current.copy(alpha = 0.2f),
+                        drawStopIndicator = {},
+                    )
+                    Text(
+                        text = stringResource(R.string.updater_downloading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LocalContentColor.current.copy(alpha = 0.78f),
+                    )
+                }
+                else -> {
+                    FilledTonalButton(onClick = { onStartDownload(info) }) {
+                        Text(stringResource(R.string.updater_button_download))
+                    }
                 }
             }
         }
@@ -1300,6 +1304,7 @@ private fun SettingsPage(
     shizukuMode: Boolean,
     updateStatus: UpdateStatus,
     onCheckForUpdate: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
     onAccentColorChanged: (AccentColor) -> Unit,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onAdvancedModeChanged: (Boolean) -> Unit,
@@ -1461,6 +1466,7 @@ private fun SettingsPage(
                     status = updateStatus,
                     position = SettingsCardPosition.Top,
                     onCheckForUpdate = onCheckForUpdate,
+                    onStartDownload = onStartDownload,
                 )
                 SettingsCard(
                     icon = Icons.Rounded.Info,
@@ -1480,25 +1486,15 @@ private fun UpdateSettingsCard(
     status: UpdateStatus,
     position: SettingsCardPosition,
     onCheckForUpdate: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val downloadFailed = stringResource(R.string.updater_download_failed)
-    var downloading by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
-    val busy = downloading || status is UpdateStatus.Checking
+    val busy = status is UpdateStatus.Checking || status is UpdateStatus.Downloading
     Card(
         onClick = {
             when {
                 busy -> Unit
-                status is UpdateStatus.Available -> launchUpdateDownload(
-                    context = context,
-                    scope = scope,
-                    info = status.info,
-                    downloadFailedMessage = downloadFailed,
-                    onDownloadingChange = { downloading = it },
-                    onProgress = {},
-                )
+                status is UpdateStatus.Available -> onStartDownload(status.info)
                 else -> onCheckForUpdate()
             }
         },
@@ -1514,10 +1510,13 @@ private fun UpdateSettingsCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (status is UpdateStatus.Checking) {
-                LoadingIndicator(modifier = Modifier.size(28.dp))
-            } else {
-                Icon(
+            when {
+                status is UpdateStatus.Checking -> LoadingIndicator(modifier = Modifier.size(28.dp))
+                status is UpdateStatus.Downloading -> CircularProgressIndicator(
+                    progress = { status.progress },
+                    modifier = Modifier.size(28.dp),
+                )
+                else -> Icon(
                     Icons.Rounded.SystemUpdate,
                     contentDescription = null,
                     modifier = Modifier.size(28.dp),
@@ -1526,20 +1525,21 @@ private fun UpdateSettingsCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = when (status) {
-                        is UpdateStatus.Available -> stringResource(R.string.updater_available_title)
+                        is UpdateStatus.Available, is UpdateStatus.Downloading ->
+                            stringResource(R.string.updater_available_title)
                         else -> stringResource(R.string.updater_check)
                     },
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
                     text = when {
-                        downloading -> stringResource(R.string.updater_downloading)
+                        status is UpdateStatus.Downloading -> stringResource(R.string.updater_downloading)
                         status is UpdateStatus.Checking -> stringResource(R.string.updater_checking)
                         status is UpdateStatus.Available ->
                             stringResource(R.string.updater_available_body_short, status.info.versionName)
-                        status == UpdateStatus.UpToDate -> stringResource(R.string.updater_up_to_date)
-                        status == UpdateStatus.Failed -> stringResource(R.string.updater_failed)
-                        else -> stringResource(R.string.updater_check)
+                        status is UpdateStatus.UpToDate -> stringResource(R.string.updater_up_to_date)
+                        status is UpdateStatus.Failed -> stringResource(R.string.updater_failed)
+                        else -> ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

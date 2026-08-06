@@ -103,8 +103,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteHistoryEntries(ids: Collection<String>) {
-        ids.forEach(historyStore::delete)
-        mutableHistory.value = historyStore.load()
+        val runningId = activeHistoryEntry?.id
+        val toDelete = ids.filterNot { it == runningId }
+        if (toDelete.isEmpty()) return
+        toDelete.forEach(historyStore::delete)
+        mutableHistory.value = mutableHistory.value.filterNot { it.id in toDelete }
     }
 
     fun loadTargetCatalog() {
