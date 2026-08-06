@@ -220,6 +220,7 @@ private val languageOptions = listOf(
     LanguageOption(R.string.language_brazillian_portuguese, "pt-BR"),
     LanguageOption(R.string.language_russian, "ru"),
     LanguageOption(R.string.language_vietnamese, "vi"),
+    LanguageOption(R.string.language_uzbek, "uz"),
 )
 
 private const val KERNEL_SU_MANAGER_URL =
@@ -1707,6 +1708,7 @@ private fun languageLabel(tag: String): String = when {
     tag.startsWith("pt-BR") -> stringResource(R.string.language_brazillian_portuguese)
     tag.startsWith("ru") -> stringResource(R.string.language_russian)
     tag.startsWith("vi") -> stringResource(R.string.language_vietnamese)
+    tag.startsWith("uz") -> stringResource(R.string.language_uzbek)
     else -> stringResource(R.string.language_system)
 }
 
