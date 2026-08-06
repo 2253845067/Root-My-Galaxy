@@ -27,8 +27,8 @@
     <string name="theme_system">Sistem</string>
     <string name="theme_light">Açık</string>
     <string name="theme_dark">Koyu</string>
-    <string name="material_color">Material renk</string>
-    <string name="material_color_description">Arayüz vurgu rengini seçin</string>
+    <string name="material_color">Tema</string>
+    <string name="material_color_description">Görünümü değiştir</string>
     <string name="language_system">Sistemi takip et</string>
     <string name="color_dynamic">Sistem dinamik renk</string>
     <string name="color_blue">Mavi</string>
@@ -44,7 +44,6 @@
     <string name="history_detail_title">İşlem Detayları</string>
     <string name="history_started">Başlangıç: %1$s</string>
     <string name="history_completed">Tamamlandı: %1$s</string>
-    <string name="history_log">İşlem Günlüğü</string>
     <string name="history_log_empty">Henüz bir günlük kayıtı yok.</string>
 
     <string name="install_title">Yükleme</string>
@@ -111,6 +110,16 @@
     <string name="advanced">Gelişmiş</string>
     <string name="advanced_mode">Gelişmiş mod</string>
     <string name="advanced_mode_description">Yükleme sırasında cihazla uyumlu payload\'ı manuel olarak seçin</string>
+    <string name="shizuku_mode">Shizuku kullan</string>
+    <string name="shizuku_mode_description">Payload\'ı çalıştırmak için Shizuku kullanın. Bu, güvenilirliği artırabilir.</string>
+    <string name="shizuku_not_running_title">Shizuku çalışmıyor</string>
+    <string name="shizuku_not_running_body">Shizuku hizmetini adb veya root ile başlatın ve bu uygulamaya izin verin, ardından bu seçeneği etkinleştirin.</string>
+    <string name="action_download_shizuku">Shizuku\'yu indir</string>
+    <string name="error_shizuku_unavailable">Shizuku çalışmıyor. Önce Shizuku\'yu adb veya root ile başlatın.</string>
+    <string name="error_shizuku_permission">Shizuku izni verilmedi</string>
+    <string name="error_shizuku_stage">%1$s Shizuku üzerinden hazırlanamadı: %2$s</string>
+    <string name="log_shizuku_prepare">[*] Shizuku çalıştırması hazırlanıyor</string>
+    <string name="log_shizuku_permission">[+] Shizuku izni verildi</string>
     <string name="repo_profile_missing">Destek profili %1$s artık mevcut değil</string>
     <string name="select_device_title">Payload seçin</string>
     <string name="select_device_description">Cihaz modeli ve kernel sürümüne göre bir payload seçin.</string>
@@ -120,4 +129,17 @@
     <string name="device_mismatch_body">Bu telefon %1$s, ancak seçilen payload %2$s için tasarlanmıştır. Çalıştırmak cihazın çökmesine veya hasar görmesine neden olabilir.</string>
     <string name="kernel_version_mismatch_title">Kernel sürümü uyumsuzluğu</string>
     <string name="kernel_version_mismatch_body">Bu telefon %1$s kernel kullanıyor, ancak seçilen payload %2$s destekliyor. Ofsetler uyumsuz olabilir.</string>
+    <string name="about">Hakkında</string>
+    <string name="about_title">Root My Galaxy Hakkında</string>
+    <string name="about_description">Root My Galaxy hakkında</string>
+    <string name="about_body">Desteklenen Samsung Galaxy cihazlarını çekirdek açığı kullanarak tek tıkla root eden yükleyicidir.</string>
+    <string name="history_payload">Payload: %1$s</string>
+    <string name="export_log">Günlüğü dışa aktar</string>
+    <string name="export_log_saved">Günlük kaydedildi</string>
+    <string name="export_log_failed">Günlük kaydedilemedi</string>
+    <string name="install_tap_open_manager">KernelSU Manager\'ı açmak için dokunun</string>
+    <string name="how_it_works">Nasıl çalışır</string>
+    <string name="kernelsu_card_description">Android için çekirdek tabanlı root çözümü</string>
+    <string name="history_shizuku_used">Shizuku kullanıldı</string>
+    <string name="history_shizuku_not_used">Shizuku kullanılmadı</string>
 </resources>
