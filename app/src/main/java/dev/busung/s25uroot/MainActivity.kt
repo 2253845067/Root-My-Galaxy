@@ -3,7 +3,10 @@ package dev.busung.s25uroot
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
+import android.view.View
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -21,12 +24,14 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -290,6 +295,7 @@ private fun RootApp(
     var compatibilityWarning by remember { mutableStateOf<CompatibilityWarning?>(null) }
     val device = remember { DeviceSnapshot.current() }
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
     var updateCardDismissed by remember { mutableStateOf(false) }
@@ -355,7 +361,7 @@ private fun RootApp(
             },
             icon = { Icon(Icons.Rounded.Warning, contentDescription = null) },
             title = {
-                DialogDimAmount(0.24f)
+                DialogDimAmount(0.34f)
                 Text(
                     stringResource(when (warning) {
                         CompatibilityWarning.Device -> R.string.device_mismatch_title
@@ -382,6 +388,7 @@ private fun RootApp(
             confirmButton = {
                 FilledTonalButton(
                     onClick = {
+                        clickHaptic(view)
                         compatibilityWarning = when (warning) {
                             CompatibilityWarning.Device -> if (!profile.matchesKernelVersion(device)) {
                                 CompatibilityWarning.KernelVersion
@@ -401,6 +408,7 @@ private fun RootApp(
             dismissButton = {
                 TextButton(
                     onClick = {
+                        clickHaptic(view)
                         compatibilityWarning = null
                         showTargetPicker = true
                     },
@@ -416,12 +424,13 @@ private fun RootApp(
             onDismissRequest = { showInstallConfirmation = false },
             icon = { Icon(Icons.Rounded.Security, contentDescription = null) },
             title = {
-                DialogDimAmount(0.24f)
+                DialogDimAmount(0.34f)
                 Text(stringResource(R.string.install_confirm_title))
             },
             text = { Text(stringResource(R.string.install_confirm_body)) },
             confirmButton = {
                 FilledTonalButton(onClick = {
+                    clickHaptic(view)
                     showInstallConfirmation = false
                     openInstaller(selectedProfile?.profileId)
                     selectedProfile = null
@@ -430,7 +439,10 @@ private fun RootApp(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showInstallConfirmation = false }) {
+                TextButton(onClick = {
+                    clickHaptic(view)
+                    showInstallConfirmation = false
+                }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },
@@ -446,7 +458,10 @@ private fun RootApp(
                 AppPage.entries.forEach { page ->
                     NavigationBarItem(
                         selected = selectedPage == page,
-                        onClick = { selectedPage = page },
+                        onClick = {
+                            clickHaptic(view)
+                            selectedPage = page
+                        },
                         modifier = Modifier.padding(top = 4.dp),
                         icon = { Icon(page.icon, contentDescription = null) },
                         label = { Text(stringResource(page.label)) },
@@ -513,6 +528,16 @@ private fun AppVersionText(
         ),
         style = style,
         color = color,
+    )
+}
+
+private fun clickHaptic(view: View) {
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            HapticFeedbackConstants.CONFIRM
+        } else {
+            HapticFeedbackConstants.LONG_PRESS
+        },
     )
 }
 
@@ -605,6 +630,7 @@ private fun UpdateCard(
     onDismiss: () -> Unit,
     onStartDownload: (UpdateInfo) -> Unit,
 ) {
+    val view = LocalView.current
     val info = status.info
     if (info == null) return
     Card(
@@ -634,7 +660,10 @@ private fun UpdateCard(
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(
-                    onClick = onDismiss,
+                    onClick = {
+                        clickHaptic(view)
+                        onDismiss()
+                    },
                     modifier = Modifier.size(24.dp),
                 ) {
                     Icon(
@@ -664,7 +693,10 @@ private fun UpdateCard(
                     )
                 }
                 else -> {
-                    FilledTonalButton(onClick = { onStartDownload(info) }) {
+                    FilledTonalButton(onClick = {
+                        clickHaptic(view)
+                        onStartDownload(info)
+                    }) {
                         Text(stringResource(R.string.updater_button_download))
                     }
                 }
@@ -719,11 +751,13 @@ private fun HowItWorksCard() {
 @Composable
 private fun InstallStatusCard(installState: InstallUiState, onInstall: () -> Unit) {
     val context = LocalContext.current
+    val view = LocalView.current
     val interactionSource = remember { MutableInteractionSource() }
     val uriHandler = LocalUriHandler.current
     val managerInstalled = remember(installState) { isKernelSuManagerInstalled(context) }
     Card(
         onClick = {
+            clickHaptic(view)
             when {
                 installState.busy -> Unit
                 installState.phase == InstallPhase.Installed -> {
@@ -813,6 +847,7 @@ private fun InstallStatusCard(installState: InstallUiState, onInstall: () -> Uni
 
 @Composable
 private fun DeviceCard(device: DeviceSnapshot) {
+    val view = LocalView.current
     var kernelExpanded by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
@@ -832,7 +867,10 @@ private fun DeviceCard(device: DeviceSnapshot) {
                 icon = Icons.Rounded.Info,
                 label = stringResource(R.string.kernel),
                 value = if (kernelExpanded) device.kernelVersionFull else device.kernelRelease,
-                onClick = { kernelExpanded = !kernelExpanded },
+                onClick = {
+                    clickHaptic(view)
+                    kernelExpanded = !kernelExpanded
+                },
             )
             InfoRow(Icons.Rounded.Security, stringResource(R.string.system_abi), "${device.abi} (${device.pageSize / 1024}K)")
         }
@@ -871,6 +909,7 @@ private fun HistoryPage(
     history: List<InstallHistoryEntry>,
     onDeleteEntries: (Set<String>) -> Unit,
 ) {
+    val view = LocalView.current
     var selectedHistoryId by remember { mutableStateOf<String?>(null) }
     var selectionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingDeleteIds by remember { mutableStateOf<Set<String>?>(null) }
@@ -893,12 +932,13 @@ private fun HistoryPage(
             onDismissRequest = { pendingDeleteIds = null },
             icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
             title = {
-                DialogDimAmount(0.24f)
+                DialogDimAmount(0.34f)
                 Text(pluralStringResource(R.plurals.history_delete_selected_title, ids.size, ids.size))
             },
             text = { Text(pluralStringResource(R.plurals.history_delete_selected_body, ids.size, ids.size)) },
             confirmButton = {
                 FilledTonalButton(onClick = {
+                    clickHaptic(view)
                     onDeleteEntries(ids)
                     selectionIds = emptySet()
                     pendingDeleteIds = null
@@ -907,7 +947,10 @@ private fun HistoryPage(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteIds = null }) {
+                TextButton(onClick = {
+                    clickHaptic(view)
+                    pendingDeleteIds = null
+                }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },
@@ -965,6 +1008,7 @@ private fun HistoryList(
     onEntryClick: (InstallHistoryEntry) -> Unit,
     onDeleteSelected: () -> Unit,
 ) {
+    val view = LocalView.current
     val selecting = selectionIds.isNotEmpty()
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
@@ -997,13 +1041,19 @@ private fun HistoryList(
                         exit = fadeOut() + scaleOut(targetScale = 0.9f),
                     ) {
                         Row {
-                            IconButton(onClick = onSelectAll) {
+                            IconButton(onClick = {
+                                clickHaptic(view)
+                                onSelectAll()
+                            }) {
                                 Icon(
                                     Icons.Rounded.SelectAll,
                                     contentDescription = stringResource(R.string.history_select_all),
                                 )
                             }
-                            IconButton(onClick = onClearSelection) {
+                            IconButton(onClick = {
+                                clickHaptic(view)
+                                onClearSelection()
+                            }) {
                                 Icon(
                                     Icons.Rounded.Close,
                                     contentDescription = stringResource(R.string.history_clear_selection),
@@ -1043,7 +1093,10 @@ private fun HistoryList(
             exit = fadeOut() + scaleOut(targetScale = 0.85f),
         ) {
             ExtendedFloatingActionButton(
-                onClick = onDeleteSelected,
+                onClick = {
+                    clickHaptic(view)
+                    onDeleteSelected()
+                },
                 icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
                 text = { Text(stringResource(R.string.history_delete_selected, selectionIds.size)) },
             )
@@ -1087,6 +1140,7 @@ private fun HistoryEntryCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val view = LocalView.current
     val interactionSource = remember { MutableInteractionSource() }
     val shape = expressiveClickableCardShape(interactionSource)
     val containerColor = historyResultContainerColor(entry.result)
@@ -1101,8 +1155,14 @@ private fun HistoryEntryCard(
             .clip(shape)
             .combinedClickable(
                 interactionSource = interactionSource,
-                onClick = onClick,
-                onLongClick = onLongClick,
+                onClick = {
+                    clickHaptic(view)
+                    onClick()
+                },
+                onLongClick = {
+                    clickHaptic(view)
+                    onLongClick()
+                },
             ),
         shape = shape,
         border = if (borderWidth > 0.dp) {
@@ -1161,6 +1221,7 @@ private fun HistoryDetail(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val exportLogLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -1177,7 +1238,10 @@ private fun HistoryDetail(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = {
+                    clickHaptic(view)
+                    onBack()
+                }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
                 }
                 Text(
@@ -1186,6 +1250,7 @@ private fun HistoryDetail(
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = {
+                    clickHaptic(view)
                     exportLogLauncher.launch(
                         Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
@@ -1349,6 +1414,7 @@ private fun SettingsPage(
     onShizukuModeChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showColorDialog by remember { mutableStateOf(false) }
@@ -1364,12 +1430,13 @@ private fun SettingsPage(
             onDismissRequest = { showShizukuMissingDialog = false },
             icon = { Icon(Icons.Rounded.Info, contentDescription = null) },
             title = {
-                DialogDimAmount(0.24f)
+                DialogDimAmount(0.34f)
                 Text(stringResource(R.string.shizuku_not_running_title))
             },
             text = { Text(stringResource(R.string.shizuku_not_running_body)) },
             confirmButton = {
                 FilledTonalButton(onClick = {
+                    clickHaptic(view)
                     showShizukuMissingDialog = false
                     openShizukuManager(context)
                 }) {
@@ -1377,7 +1444,10 @@ private fun SettingsPage(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showShizukuMissingDialog = false }) {
+                TextButton(onClick = {
+                    clickHaptic(view)
+                    showShizukuMissingDialog = false
+                }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },
@@ -1445,7 +1515,10 @@ private fun SettingsPage(
                     description = stringResource(R.string.material_color_description),
                     value = accentLabel(accentColor),
                     position = SettingsCardPosition.Top,
-                    onClick = { showColorDialog = true },
+                    onClick = {
+                        clickHaptic(view)
+                        showColorDialog = true
+                    },
                 )
                 SettingsCard(
                     modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -1456,7 +1529,10 @@ private fun SettingsPage(
                     description = stringResource(R.string.language_description),
                     value = languageLabel(currentLanguageTag),
                     position = SettingsCardPosition.Middle,
-                    onClick = { showLanguageDialog = true },
+                    onClick = {
+                        clickHaptic(view)
+                        showLanguageDialog = true
+                    },
                 )
                 SettingsSwitchCard(
                     icon = Icons.Rounded.VerifiedUser,
@@ -1465,6 +1541,7 @@ private fun SettingsPage(
                     checked = shizukuMode,
                     position = SettingsCardPosition.Bottom,
                     onCheckedChange = { enabled ->
+                        clickHaptic(view)
                         if (!enabled) {
                             onShizukuModeChanged(false)
                         } else {
@@ -1491,7 +1568,10 @@ private fun SettingsPage(
                 title = stringResource(R.string.advanced_mode),
                 description = stringResource(R.string.advanced_mode_description),
                 checked = advancedMode,
-                onCheckedChange = onAdvancedModeChanged,
+                onCheckedChange = {
+                    clickHaptic(view)
+                    onAdvancedModeChanged(it)
+                },
             )
         }
         item { SectionLabel(stringResource(R.string.about)) }
@@ -1509,7 +1589,10 @@ private fun SettingsPage(
                     description = stringResource(R.string.about_description),
                     value = "",
                     position = SettingsCardPosition.Bottom,
-                    onClick = { showAboutDialog = true },
+                    onClick = {
+                        clickHaptic(view)
+                        showAboutDialog = true
+                    },
                 )
             }
         }
@@ -1524,9 +1607,11 @@ private fun UpdateSettingsCard(
     onStartDownload: (UpdateInfo) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val view = LocalView.current
     val busy = status.busy
     Card(
         onClick = {
+            clickHaptic(view)
             when {
                 busy -> Unit
                 status is UpdateStatus.Available -> onStartDownload(status.info)
@@ -1605,6 +1690,7 @@ private fun TargetSelectionSheet(
 ) {
     var showOnlyMyDevice by remember { mutableStateOf(true) }
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
+    val view = LocalView.current
     val visibleProfiles = remember(catalog.profiles, showOnlyMyDevice, device) {
         if (showOnlyMyDevice) {
             catalog.profiles.filter { it.matches(device) }
@@ -1640,6 +1726,7 @@ private fun TargetSelectionSheet(
                         value = showOnlyMyDevice,
                         role = Role.Checkbox,
                         onValueChange = { enabled ->
+                            clickHaptic(view)
                             showOnlyMyDevice = enabled
                             if (enabled && selectedProfile?.matches(device) == false) {
                                 selectedProfileId = null
@@ -1706,7 +1793,10 @@ private fun TargetSelectionSheet(
                                     .selectable(
                                         selected = selected,
                                         role = Role.RadioButton,
-                                        onClick = { selectedProfileId = profile.profileId },
+                                        onClick = {
+                                            clickHaptic(view)
+                                            selectedProfileId = profile.profileId
+                                        },
                                     )
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1735,11 +1825,17 @@ private fun TargetSelectionSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                TextButton(onClick = {
+                    clickHaptic(view)
+                    onDismiss()
+                }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.action_cancel))
                 }
                 Button(
-                    onClick = { selectedProfile?.let(onNext) },
+                    onClick = {
+                        clickHaptic(view)
+                        selectedProfile?.let(onNext)
+                    },
                     enabled = selectedProfile != null,
                     modifier = Modifier.weight(1f),
                 ) {
@@ -1779,8 +1875,12 @@ private fun SettingsCard(
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val view = LocalView.current
     Card(
-        onClick = onClick,
+        onClick = {
+            clickHaptic(view)
+            onClick()
+        },
         modifier = modifier.fillMaxWidth(),
         shape = expressiveClickableCardShape(interactionSource, position),
         interactionSource = interactionSource,
@@ -1824,8 +1924,12 @@ private fun SettingsSwitchCard(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val view = LocalView.current
     Card(
-        onClick = { onCheckedChange(!checked) },
+        onClick = {
+            clickHaptic(view)
+            onCheckedChange(!checked)
+        },
         modifier = Modifier.fillMaxWidth(),
         shape = expressiveClickableCardShape(interactionSource, position),
         interactionSource = interactionSource,
@@ -1857,6 +1961,7 @@ private fun ThemeModeSelector(
     themeMode: AppThemeMode,
     onThemeModeChanged: (AppThemeMode) -> Unit,
 ) {
+    val view = LocalView.current
     val themeModes = AppThemeMode.entries
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1865,7 +1970,10 @@ private fun ThemeModeSelector(
         themeModes.forEachIndexed { index, mode ->
             ToggleButton(
                 checked = themeMode == mode,
-                onCheckedChange = { onThemeModeChanged(mode) },
+                onCheckedChange = {
+                    clickHaptic(view)
+                    onThemeModeChanged(mode)
+                },
                 modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
                 colors = ToggleButtonDefaults.toggleButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -1895,10 +2003,11 @@ private fun ThemeModeSelector(
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
+    val view = LocalView.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            DialogDimAmount(0.24f)
+            DialogDimAmount(0.34f)
             Text(stringResource(R.string.about_title))
         },
         text = {
@@ -1910,7 +2019,10 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                 )
                 HorizontalDivider()
                 Surface(
-                    onClick = { uriHandler.openUri(KERNEL_SU_HOME_URL) },
+                    onClick = {
+                        clickHaptic(view)
+                        uriHandler.openUri(KERNEL_SU_HOME_URL)
+                    },
                     color = Color.Transparent,
                     shape = MaterialTheme.shapes.medium,
                 ) {
@@ -1935,7 +2047,10 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                     }
                 }
                 Surface(
-                    onClick = { uriHandler.openUri(ROOT_MY_GALAXY_URL) },
+                    onClick = {
+                        clickHaptic(view)
+                        uriHandler.openUri(ROOT_MY_GALAXY_URL)
+                    },
                     color = Color.Transparent,
                     shape = MaterialTheme.shapes.medium,
                 ) {
@@ -1962,7 +2077,10 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                clickHaptic(view)
+                onDismiss()
+            }) {
                 Text(stringResource(R.string.action_close))
             }
         },
@@ -2020,6 +2138,12 @@ private fun SideChoiceMenu(
     var visible by remember { mutableStateOf(false) }
     var closing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    val view = LocalView.current
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (visible) 0.34f else 0f,
+        animationSpec = tween(durationMillis = if (visible) 160 else 180),
+        label = "menu-scrim",
+    )
 
     fun closeMenu(afterAnimation: () -> Unit) {
         if (closing) return
@@ -2053,6 +2177,7 @@ private fun SideChoiceMenu(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(Color.Black.copy(alpha = scrimAlpha))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -2106,6 +2231,7 @@ private fun SideChoiceMenu(
                             val selected = index == selectedIndex
                             Surface(
                                 onClick = {
+                                    clickHaptic(view)
                                     closeMenu { onSelected(index) }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
