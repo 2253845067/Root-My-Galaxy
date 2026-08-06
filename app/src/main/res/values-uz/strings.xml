@@ -21,7 +21,7 @@
     <string name="kernelsu_card_title">KernelSU</string>
     <string name="kernelsu_card_description">Android uchun karnel-asoslangan rootlash</string>
     <string name="firmware">Proshivka</string>
-    <string name="system">Tizim</string>
+    <string name="system">Tizim</string><string name="kernel">Yadro</string>
     <string name="system_abi">Tizim ABI\'si</string>
     <string name="settings">Sozlamalar</string>
     <string name="version_format">%1$s (%2$d)</string>

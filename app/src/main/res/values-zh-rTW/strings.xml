@@ -21,7 +21,7 @@
 
     <string name="device">裝置</string>
     <string name="firmware">韌體</string>
-    <string name="system">系統</string>
+    <string name="system">系統</string><string name="kernel">核心</string>
     <string name="system_abi">系統 ABI</string>
 
     <string name="settings">設定</string>

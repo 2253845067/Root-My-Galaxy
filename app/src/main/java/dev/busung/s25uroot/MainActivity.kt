@@ -813,8 +813,9 @@ private fun InstallStatusCard(installState: InstallUiState, onInstall: () -> Uni
 
 @Composable
 private fun DeviceCard(device: DeviceSnapshot) {
+    var kernelExpanded by remember { mutableStateOf(false) }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -827,14 +828,35 @@ private fun DeviceCard(device: DeviceSnapshot) {
             InfoRow(Icons.Rounded.Memory, stringResource(R.string.device), "${device.manufacturer} ${device.model} (${device.device})")
             InfoRow(Icons.Rounded.Code, stringResource(R.string.firmware), device.buildId)
             InfoRow(Icons.Rounded.Info, stringResource(R.string.system), "Android ${device.androidRelease} (API ${device.sdk})")
+            InfoRow(
+                icon = Icons.Rounded.Info,
+                label = stringResource(R.string.kernel),
+                value = if (kernelExpanded) device.kernelVersionFull else device.kernelRelease,
+                onClick = { kernelExpanded = !kernelExpanded },
+            )
             InfoRow(Icons.Rounded.Security, stringResource(R.string.system_abi), "${device.abi} (${device.pageSize / 1024}K)")
         }
     }
 }
 
 @Composable
-private fun InfoRow(icon: ImageVector, label: String, value: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+private fun InfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = if (onClick != null) {
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClick = onClick)
+        } else {
+            Modifier
+        },
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
+    ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Column {
             Text(label, style = MaterialTheme.typography.titleSmall)

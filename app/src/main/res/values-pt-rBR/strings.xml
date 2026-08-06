@@ -17,7 +17,7 @@
     <string name="install_tap_start">Toque para instalar o KernelSU</string>
     <string name="device">Dispositivo</string>
     <string name="firmware">Firmware</string>
-    <string name="system">Sistema</string>
+    <string name="system">Sistema</string><string name="kernel">Kernel</string>
     <string name="system_abi">ABI do Sistema</string>
     <string name="settings">Configurações</string>
     <string name="version_format">%1$s (%2$d)</string>

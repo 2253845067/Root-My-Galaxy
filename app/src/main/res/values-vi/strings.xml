@@ -17,7 +17,7 @@
     <string name="install_tap_start">Chạm để cài đặt KernelSU</string>
     <string name="device">Thiết bị</string>
     <string name="firmware">Firmware</string>
-    <string name="system">Hệ thống</string>
+    <string name="system">Hệ thống</string><string name="kernel">Kernel</string>
     <string name="system_abi">ABI hệ thống</string>
     <string name="settings">Cài đặt</string>
     <string name="version_format">%1$s (%2$d)</string>

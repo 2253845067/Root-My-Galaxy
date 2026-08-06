@@ -18,7 +18,7 @@
     <string name="install_tap_start">Нажмите, чтобы установить KernelSU</string>
     <string name="device">Устройство</string>
     <string name="firmware">Прошивка</string>
-    <string name="system">Система</string>
+    <string name="system">Система</string><string name="kernel">Ядро</string>
     <string name="system_abi">ABI системы</string>
     <string name="settings">Настройки</string>
     <string name="version_format">%1$s (%2$d)</string>
