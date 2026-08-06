@@ -39,4 +39,26 @@
     <string name="kernelsu_card_description">Android向けカーネルベースのrootソリューション</string>
     <string name="history_shizuku_used">Shizukuを使用</string>
     <string name="history_shizuku_not_used">Shizuku未使用</string>
+    <string name="updater_available_title">アップデートがあります</string>
+    <string name="updater_available_body">バージョン %1$s が利用可能です</string>
+    <string name="updater_button_download">ダウンロードしてインストール</string>
+    <string name="updater_downloading">ダウンロード中…</string>
+    <string name="updater_download_failed">ダウンロードに失敗しました</string>
+    <string name="updater_check">アップデートを確認</string>
+    <string name="updater_checking">アップデートを確認中…</string>
+    <string name="updater_up_to_date">最新バージョンです</string>
+    <string name="updater_failed">アップデートの確認に失敗しました</string>
+    <string name="updater_available_body_short">%1$s が利用可能です</string>
+    <string name="history_select_all">すべて選択</string>
+    <string name="history_clear_selection">選択を解除</string>
+    <string name="history_delete_selected">削除 (%1$d)</string>
+    <plurals name="history_delete_selected_title">
+        <item quantity="one">この実行を削除しますか？</item>
+        <item quantity="other">%1$d件の実行を削除しますか？</item>
+    </plurals>
+    <plurals name="history_delete_selected_body">
+        <item quantity="one">この実行とログは完全に削除されます。</item>
+        <item quantity="other">これらの実行とログは完全に削除されます。</item>
+    </plurals>
+    <string name="history_delete">削除</string>
 </resources>

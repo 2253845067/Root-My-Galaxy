@@ -102,6 +102,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun deleteHistoryEntries(ids: Collection<String>) {
+        ids.forEach(historyStore::delete)
+        mutableHistory.value = historyStore.load()
+    }
+
     fun loadTargetCatalog() {
         if (mutableTargetCatalog.value.loading) return
         viewModelScope.launch(Dispatchers.IO) {

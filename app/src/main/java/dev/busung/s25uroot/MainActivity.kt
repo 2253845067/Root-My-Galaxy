@@ -15,7 +15,9 @@ import androidx.activity.viewModels
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -24,7 +26,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +61,9 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.History
@@ -68,6 +75,7 @@ import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.VerifiedUser
@@ -79,11 +87,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
@@ -100,11 +111,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -115,6 +128,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -130,6 +144,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.busung.s25uroot.ui.theme.RootMyGalaxyTheme
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -274,6 +289,24 @@ private fun RootApp(
     var selectedProfile by remember { mutableStateOf<TargetProfile?>(null) }
     var compatibilityWarning by remember { mutableStateOf<CompatibilityWarning?>(null) }
     val device = remember { DeviceSnapshot.current() }
+    val scope = rememberCoroutineScope()
+    var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
+    var updateCardDismissed by remember { mutableStateOf(false) }
+    val checkForUpdate: () -> Unit = {
+        if (updateStatus !is UpdateStatus.Checking) {
+            updateStatus = UpdateStatus.Checking
+            scope.launch {
+                val info = AppUpdater.fetchLatestRelease()
+                updateStatus = when {
+                    info == null -> UpdateStatus.Failed
+                    AppUpdater.isUpdateAvailable(info.versionName, BuildConfig.VERSION_NAME) ->
+                        UpdateStatus.Available(info)
+                    else -> UpdateStatus.UpToDate
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { checkForUpdate() }
 
     if (showTargetPicker) {
         TargetSelectionSheet(
@@ -410,6 +443,9 @@ private fun RootApp(
                     padding = padding,
                     device = device,
                     installState = installState,
+                    updateStatus = updateStatus,
+                    updateCardDismissed = updateCardDismissed,
+                    onDismissUpdateCard = { updateCardDismissed = true },
                     onInstall = {
                         selectedProfile = null
                         if (advancedMode) {
@@ -420,13 +456,19 @@ private fun RootApp(
                         }
                     },
                 )
-                AppPage.History -> HistoryPage(padding, history)
+                AppPage.History -> HistoryPage(
+                    padding,
+                    history,
+                    onDeleteEntries = installViewModel::deleteHistoryEntries,
+                )
                 AppPage.Settings -> SettingsPage(
                     padding = padding,
                     accentColor = accentColor,
                     themeMode = themeMode,
                     advancedMode = advancedMode,
                     shizukuMode = shizukuMode,
+                    updateStatus = updateStatus,
+                    onCheckForUpdate = checkForUpdate,
                     onAccentColorChanged = onAccentColorChanged,
                     onThemeModeChanged = onThemeModeChanged,
                     onAdvancedModeChanged = onAdvancedModeChanged,
@@ -448,6 +490,9 @@ private fun OverviewPage(
     padding: PaddingValues,
     device: DeviceSnapshot,
     installState: InstallUiState,
+    updateStatus: UpdateStatus,
+    updateCardDismissed: Boolean,
+    onDismissUpdateCard: () -> Unit,
     onInstall: () -> Unit,
 ) {
     LazyColumn(
@@ -484,9 +529,125 @@ private fun OverviewPage(
                 )
             }
         }
+        if (updateStatus is UpdateStatus.Available && !updateCardDismissed) {
+            item { UpdateCard(updateStatus.info, onDismiss = onDismissUpdateCard) }
+        }
         item { InstallStatusCard(installState, onInstall) }
         item { DeviceCard(device) }
         item { HowItWorksCard() }
+    }
+}
+
+private sealed interface UpdateStatus {
+    data object Idle : UpdateStatus
+    data object Checking : UpdateStatus
+    data class Available(val info: UpdateInfo) : UpdateStatus
+    data object UpToDate : UpdateStatus
+    data object Failed : UpdateStatus
+}
+
+private fun launchUpdateDownload(
+    context: Context,
+    scope: CoroutineScope,
+    info: UpdateInfo,
+    downloadFailedMessage: String,
+    onDownloadingChange: (Boolean) -> Unit,
+    onProgress: (Float) -> Unit,
+) {
+    val apkUrl = info.apkUrl
+    if (apkUrl == null) {
+        AppUpdater.openReleasesPage(context)
+        return
+    }
+    onDownloadingChange(true)
+    scope.launch {
+        val apk = AppUpdater.downloadApk(context, apkUrl, onProgress = onProgress)
+        onDownloadingChange(false)
+        if (apk != null && AppUpdater.installApk(context, apk)) return@launch
+        Toast.makeText(context, downloadFailedMessage, Toast.LENGTH_SHORT).show()
+        AppUpdater.openReleasesPage(context)
+    }
+}
+
+@Composable
+private fun UpdateCard(info: UpdateInfo, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val downloadFailed = stringResource(R.string.updater_download_failed)
+    var downloading by remember { mutableStateOf(false) }
+    var progress by remember { mutableFloatStateOf(0f) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = stringResource(R.string.updater_available_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.action_close),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.updater_available_body, info.versionName),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (downloading) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = LocalContentColor.current,
+                    trackColor = LocalContentColor.current.copy(alpha = 0.2f),
+                    drawStopIndicator = {},
+                )
+                Text(
+                    text = stringResource(R.string.updater_downloading),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LocalContentColor.current.copy(alpha = 0.78f),
+                )
+            } else {
+                FilledTonalButton(
+                    onClick = {
+                        progress = 0f
+                        launchUpdateDownload(
+                            context = context,
+                            scope = scope,
+                            info = info,
+                            downloadFailedMessage = downloadFailed,
+                            onDownloadingChange = { downloading = it },
+                            onProgress = { p -> scope.launch { progress = p } },
+                        )
+                    },
+                ) {
+                    Text(stringResource(R.string.updater_button_download))
+                }
+            }
+        }
     }
 }
 
@@ -664,10 +825,50 @@ private fun InfoRow(icon: ImageVector, label: String, value: String) {
 private fun HistoryPage(
     padding: PaddingValues,
     history: List<InstallHistoryEntry>,
+    onDeleteEntries: (Set<String>) -> Unit,
 ) {
     var selectedHistoryId by remember { mutableStateOf<String?>(null) }
+    var selectionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDeleteIds by remember { mutableStateOf<Set<String>?>(null) }
     val selectedEntry = history.firstOrNull { it.id == selectedHistoryId }
-    BackHandler(enabled = selectedEntry != null) { selectedHistoryId = null }
+    val selectableIds = history
+        .filter { it.result != InstallRunResult.Running }
+        .map { it.id }
+        .toSet()
+    val selecting = selectionIds.isNotEmpty()
+    BackHandler(enabled = selectedEntry != null || selecting) {
+        if (selecting) {
+            selectionIds = emptySet()
+        } else {
+            selectedHistoryId = null
+        }
+    }
+
+    pendingDeleteIds?.let { ids ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteIds = null },
+            icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+            title = {
+                DialogDimAmount(0.24f)
+                Text(pluralStringResource(R.plurals.history_delete_selected_title, ids.size, ids.size))
+            },
+            text = { Text(pluralStringResource(R.plurals.history_delete_selected_body, ids.size, ids.size)) },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    onDeleteEntries(ids)
+                    selectionIds = emptySet()
+                    pendingDeleteIds = null
+                }) {
+                    Text(stringResource(R.string.history_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteIds = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
 
     AnimatedContent(
         targetState = selectedEntry,
@@ -678,7 +879,25 @@ private fun HistoryPage(
             HistoryList(
                 padding = padding,
                 history = history,
+                selectionIds = selectionIds,
+                selectableIds = selectableIds,
+                onToggleSelection = { id ->
+                    selectionIds = if (id in selectionIds) {
+                        selectionIds - id
+                    } else {
+                        selectionIds + id
+                    }
+                },
+                onSelectAll = {
+                    selectionIds = if (selectionIds.size == selectableIds.size) {
+                        emptySet()
+                    } else {
+                        selectableIds
+                    }
+                },
+                onClearSelection = { selectionIds = emptySet() },
                 onEntryClick = { selectedHistoryId = it.id },
+                onDeleteSelected = { pendingDeleteIds = selectionIds },
             )
         } else {
             HistoryDetail(
@@ -694,26 +913,96 @@ private fun HistoryPage(
 private fun HistoryList(
     padding: PaddingValues,
     history: List<InstallHistoryEntry>,
+    selectionIds: Set<String>,
+    selectableIds: Set<String>,
+    onToggleSelection: (String) -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
     onEntryClick: (InstallHistoryEntry) -> Unit,
+    onDeleteSelected: () -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Text(
-                text = stringResource(R.string.history_title),
-                style = MaterialTheme.typography.headlineLarge,
-                modifier = Modifier.padding(top = 20.dp, bottom = 14.dp),
-            )
-        }
-        if (history.isEmpty()) {
-            item { EmptyHistoryCard() }
-        } else {
-            itemsIndexed(history, key = { _, entry -> entry.id }) { _, entry ->
-                HistoryEntryCard(entry, onClick = { onEntryClick(entry) })
+    val selecting = selectionIds.isNotEmpty()
+    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = 20.dp,
+                end = 20.dp,
+                bottom = 96.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.history_title),
+                            style = MaterialTheme.typography.headlineLarge,
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = selecting,
+                        enter = fadeIn() + scaleIn(initialScale = 0.9f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.9f),
+                    ) {
+                        Row {
+                            IconButton(onClick = onSelectAll) {
+                                Icon(
+                                    Icons.Rounded.SelectAll,
+                                    contentDescription = stringResource(R.string.history_select_all),
+                                )
+                            }
+                            IconButton(onClick = onClearSelection) {
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.history_clear_selection),
+                                )
+                            }
+                        }
+                    }
+                }
             }
+            if (history.isEmpty()) {
+                item { EmptyHistoryCard() }
+            } else {
+                itemsIndexed(history, key = { _, entry -> entry.id }) { _, entry ->
+                    HistoryEntryCard(
+                        entry = entry,
+                        selectionMode = selecting,
+                        isSelected = entry.id in selectionIds,
+                        selectable = entry.id in selectableIds,
+                        onClick = {
+                            if (selecting) {
+                                onToggleSelection(entry.id)
+                            } else {
+                                onEntryClick(entry)
+                            }
+                        },
+                        onLongClick = {
+                            if (entry.id in selectableIds) onToggleSelection(entry.id)
+                        },
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = selecting,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+            enter = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+        ) {
+            ExtendedFloatingActionButton(
+                onClick = onDeleteSelected,
+                icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+                text = { Text(stringResource(R.string.history_delete_selected, selectionIds.size)) },
+            )
         }
     }
 }
@@ -746,8 +1035,16 @@ private fun EmptyHistoryCard() {
 }
 
 @Composable
-private fun HistoryEntryCard(entry: InstallHistoryEntry, onClick: () -> Unit) {
+private fun HistoryEntryCard(
+    entry: InstallHistoryEntry,
+    selectionMode: Boolean,
+    isSelected: Boolean,
+    selectable: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val interactionSource = remember { MutableInteractionSource() }
+    val shape = expressiveClickableCardShape(interactionSource)
     val containerColor = when (entry.result) {
         InstallRunResult.Running -> MaterialTheme.colorScheme.tertiaryContainer
         InstallRunResult.Succeeded -> MaterialTheme.colorScheme.primaryContainer
@@ -758,22 +1055,54 @@ private fun HistoryEntryCard(entry: InstallHistoryEntry, onClick: () -> Unit) {
         InstallRunResult.Succeeded -> MaterialTheme.colorScheme.onPrimaryContainer
         InstallRunResult.Failed -> MaterialTheme.colorScheme.onErrorContainer
     }
+    val borderWidth by animateDpAsState(
+        targetValue = if (selectionMode && isSelected) 2.dp else 0.dp,
+        label = "history-card-border",
+    )
     Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = expressiveClickableCardShape(interactionSource),
-        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
+        shape = shape,
+        border = if (borderWidth > 0.dp) {
+            BorderStroke(borderWidth, MaterialTheme.colorScheme.secondary)
+        } else {
+            null
+        },
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor,
         ),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 15.dp)
+                .animateContentSize(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(13.dp),
         ) {
-            Icon(historyResultIcon(entry.result), contentDescription = null, modifier = Modifier.size(30.dp))
+            Crossfade(
+                targetState = selectionMode,
+                label = "history-leading",
+                modifier = Modifier.size(48.dp),
+            ) { selecting ->
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (selecting) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = null,
+                            enabled = selectable,
+                        )
+                    } else {
+                        Icon(historyResultIcon(entry.result), contentDescription = null, modifier = Modifier.size(30.dp))
+                    }
+                }
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(historyResultLabel(entry.result), style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -782,7 +1111,9 @@ private fun HistoryEntryCard(entry: InstallHistoryEntry, onClick: () -> Unit) {
                     color = contentColor.copy(alpha = 0.78f),
                 )
             }
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null)
+            if (!selectionMode) {
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null)
+            }
         }
     }
 }
@@ -967,6 +1298,8 @@ private fun SettingsPage(
     themeMode: AppThemeMode,
     advancedMode: Boolean,
     shizukuMode: Boolean,
+    updateStatus: UpdateStatus,
+    onCheckForUpdate: () -> Unit,
     onAccentColorChanged: (AccentColor) -> Unit,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onAdvancedModeChanged: (Boolean) -> Unit,
@@ -1123,13 +1456,105 @@ private fun SettingsPage(
         }
         item { SectionLabel(stringResource(R.string.about)) }
         item {
-            SettingsCard(
-                icon = Icons.Rounded.Info,
-                title = stringResource(R.string.about),
-                description = stringResource(R.string.about_description),
-                value = "",
-                onClick = { showAboutDialog = true },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                UpdateSettingsCard(
+                    status = updateStatus,
+                    position = SettingsCardPosition.Top,
+                    onCheckForUpdate = onCheckForUpdate,
+                )
+                SettingsCard(
+                    icon = Icons.Rounded.Info,
+                    title = stringResource(R.string.about),
+                    description = stringResource(R.string.about_description),
+                    value = "",
+                    position = SettingsCardPosition.Bottom,
+                    onClick = { showAboutDialog = true },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateSettingsCard(
+    status: UpdateStatus,
+    position: SettingsCardPosition,
+    onCheckForUpdate: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val downloadFailed = stringResource(R.string.updater_download_failed)
+    var downloading by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val busy = downloading || status is UpdateStatus.Checking
+    Card(
+        onClick = {
+            when {
+                busy -> Unit
+                status is UpdateStatus.Available -> launchUpdateDownload(
+                    context = context,
+                    scope = scope,
+                    info = status.info,
+                    downloadFailedMessage = downloadFailed,
+                    onDownloadingChange = { downloading = it },
+                    onProgress = {},
+                )
+                else -> onCheckForUpdate()
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = expressiveClickableCardShape(interactionSource, position),
+        interactionSource = interactionSource,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (status is UpdateStatus.Checking) {
+                LoadingIndicator(modifier = Modifier.size(28.dp))
+            } else {
+                Icon(
+                    Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = when (status) {
+                        is UpdateStatus.Available -> stringResource(R.string.updater_available_title)
+                        else -> stringResource(R.string.updater_check)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = when {
+                        downloading -> stringResource(R.string.updater_downloading)
+                        status is UpdateStatus.Checking -> stringResource(R.string.updater_checking)
+                        status is UpdateStatus.Available ->
+                            stringResource(R.string.updater_available_body_short, status.info.versionName)
+                        status == UpdateStatus.UpToDate -> stringResource(R.string.updater_up_to_date)
+                        status == UpdateStatus.Failed -> stringResource(R.string.updater_failed)
+                        else -> stringResource(R.string.updater_check)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (status is UpdateStatus.Available) {
+                Text(
+                    text = stringResource(R.string.updater_button_download),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
