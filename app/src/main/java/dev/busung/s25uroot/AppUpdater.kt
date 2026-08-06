@@ -18,10 +18,12 @@ data class UpdateInfo(
     val releaseUrl: String,
 )
 
+const val ROOT_MY_GALAXY_URL = "https://github.com/BuSung-dev/Root-My-Galaxy"
+
 object AppUpdater {
 
-    private const val GITHUB_API = "https://api.github.com/repos/Busung-Dev/Root-My-Galaxy"
-    private const val RELEASES_PAGE = "https://github.com/Busung-Dev/Root-My-Galaxy/releases/latest"
+    private const val GITHUB_API = "https://api.github.com/repos/BuSung-dev/Root-My-Galaxy"
+    private const val RELEASES_PAGE = "$ROOT_MY_GALAXY_URL/releases/latest"
 
     suspend fun fetchLatestRelease(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
@@ -61,11 +63,8 @@ object AppUpdater {
         }
     }
 
-    fun isUpdateAvailable(latestVersion: String, currentVersion: String): Boolean {
-        val latest = latestVersion.trim().removePrefix("v")
-        val current = currentVersion.trim().removePrefix("v")
-        return latest.isNotEmpty() && latest != current
-    }
+    fun isUpdateAvailable(latestVersion: String, currentVersion: String): Boolean =
+        latestVersion.isNotEmpty() && latestVersion != currentVersion
 
     suspend fun downloadApk(
         context: Context,

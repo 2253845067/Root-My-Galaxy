@@ -135,6 +135,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
@@ -293,7 +294,7 @@ private fun RootApp(
     var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
     var updateCardDismissed by remember { mutableStateOf(false) }
     val checkForUpdate: () -> Unit = {
-        if (updateStatus !is UpdateStatus.Checking && updateStatus !is UpdateStatus.Downloading) {
+        if (!updateStatus.busy) {
             updateStatus = UpdateStatus.Checking
             scope.launch {
                 val info = AppUpdater.fetchLatestRelease()
@@ -500,6 +501,22 @@ private fun RootApp(
 }
 
 @Composable
+private fun AppVersionText(
+    style: TextStyle,
+    color: Color,
+) {
+    Text(
+        text = stringResource(
+            R.string.version_format,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+        ),
+        style = style,
+        color = color,
+    )
+}
+
+@Composable
 private fun DialogDimAmount(amount: Float) {
     val window = (LocalView.current.parent as DialogWindowProvider).window
     SideEffect { window.setDimAmount(amount) }
@@ -539,12 +556,7 @@ private fun OverviewPage(
                     style = MaterialTheme.typography.headlineLarge,
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = stringResource(
-                        R.string.version_format,
-                        BuildConfig.VERSION_NAME,
-                        BuildConfig.VERSION_CODE,
-                    ),
+                AppVersionText(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                 )
@@ -552,7 +564,7 @@ private fun OverviewPage(
         }
         if (
             !updateCardDismissed &&
-            (updateStatus is UpdateStatus.Available || updateStatus is UpdateStatus.Downloading)
+            updateStatus.info != null
         ) {
             item {
                 UpdateCard(
@@ -577,17 +589,23 @@ private sealed interface UpdateStatus {
     data object Failed : UpdateStatus
 }
 
+private val UpdateStatus.busy: Boolean
+    get() = this is UpdateStatus.Checking || this is UpdateStatus.Downloading
+
+private val UpdateStatus.info: UpdateInfo?
+    get() = when (this) {
+        is UpdateStatus.Available -> this.info
+        is UpdateStatus.Downloading -> this.info
+        else -> null
+    }
+
 @Composable
 private fun UpdateCard(
     status: UpdateStatus,
     onDismiss: () -> Unit,
     onStartDownload: (UpdateInfo) -> Unit,
 ) {
-    val info = when (status) {
-        is UpdateStatus.Available -> status.info
-        is UpdateStatus.Downloading -> status.info
-        else -> null
-    }
+    val info = status.info
     if (info == null) return
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1049,16 +1067,8 @@ private fun HistoryEntryCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = expressiveClickableCardShape(interactionSource)
-    val containerColor = when (entry.result) {
-        InstallRunResult.Running -> MaterialTheme.colorScheme.tertiaryContainer
-        InstallRunResult.Succeeded -> MaterialTheme.colorScheme.primaryContainer
-        InstallRunResult.Failed -> MaterialTheme.colorScheme.errorContainer
-    }
-    val contentColor = when (entry.result) {
-        InstallRunResult.Running -> MaterialTheme.colorScheme.onTertiaryContainer
-        InstallRunResult.Succeeded -> MaterialTheme.colorScheme.onPrimaryContainer
-        InstallRunResult.Failed -> MaterialTheme.colorScheme.onErrorContainer
-    }
+    val containerColor = historyResultContainerColor(entry.result)
+    val contentColor = historyResultContentColor(entry.result)
     val borderWidth by animateDpAsState(
         targetValue = if (selectionMode && isSelected) 2.dp else 0.dp,
         label = "history-card-border",
@@ -1189,16 +1199,8 @@ private fun HistoryDetail(
 
 @Composable
 private fun HistoryResultCard(entry: InstallHistoryEntry) {
-    val containerColor = when (entry.result) {
-        InstallRunResult.Running -> MaterialTheme.colorScheme.tertiaryContainer
-        InstallRunResult.Succeeded -> MaterialTheme.colorScheme.primaryContainer
-        InstallRunResult.Failed -> MaterialTheme.colorScheme.errorContainer
-    }
-    val contentColor = when (entry.result) {
-        InstallRunResult.Running -> MaterialTheme.colorScheme.onTertiaryContainer
-        InstallRunResult.Succeeded -> MaterialTheme.colorScheme.onPrimaryContainer
-        InstallRunResult.Failed -> MaterialTheme.colorScheme.onErrorContainer
-    }
+    val containerColor = historyResultContainerColor(entry.result)
+    val contentColor = historyResultContentColor(entry.result)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -1260,6 +1262,20 @@ private fun historyResultIcon(result: InstallRunResult): ImageVector = when (res
     InstallRunResult.Running -> Icons.Rounded.Schedule
     InstallRunResult.Succeeded -> Icons.Rounded.CheckCircle
     InstallRunResult.Failed -> Icons.Rounded.Error
+}
+
+@Composable
+private fun historyResultContainerColor(result: InstallRunResult): Color = when (result) {
+    InstallRunResult.Running -> MaterialTheme.colorScheme.tertiaryContainer
+    InstallRunResult.Succeeded -> MaterialTheme.colorScheme.primaryContainer
+    InstallRunResult.Failed -> MaterialTheme.colorScheme.errorContainer
+}
+
+@Composable
+private fun historyResultContentColor(result: InstallRunResult): Color = when (result) {
+    InstallRunResult.Running -> MaterialTheme.colorScheme.onTertiaryContainer
+    InstallRunResult.Succeeded -> MaterialTheme.colorScheme.onPrimaryContainer
+    InstallRunResult.Failed -> MaterialTheme.colorScheme.onErrorContainer
 }
 
 @Composable
@@ -1349,10 +1365,8 @@ private fun SettingsPage(
     if (showLanguageDialog) {
         SideChoiceMenu(
             choices = languageOptions.map { stringResource(it.label) },
-            selectedIndex = languageOptions.indexOfFirst {
-                it.tag.isEmpty() && currentLanguageTag.isEmpty() ||
-                    it.tag.isNotEmpty() && currentLanguageTag.startsWith(it.tag.substringBefore('-'))
-            }.coerceAtLeast(0),
+            selectedIndex = languageOptions.indexOfFirst { languageMatches(it, currentLanguageTag) }
+                .coerceAtLeast(0),
             topOffset = languageMenuTop,
             onSelected = { index ->
                 showLanguageDialog = false
@@ -1388,8 +1402,7 @@ private fun SettingsPage(
         item {
             Column(modifier = Modifier.padding(top = 20.dp, bottom = 18.dp)) {
                 Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineLarge)
-                Text(
-                    stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                AppVersionText(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1489,7 +1502,7 @@ private fun UpdateSettingsCard(
     onStartDownload: (UpdateInfo) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val busy = status is UpdateStatus.Checking || status is UpdateStatus.Downloading
+    val busy = status.busy
     Card(
         onClick = {
             when {
@@ -1869,8 +1882,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(stringResource(R.string.about_body))
-                Text(
-                    stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                AppVersionText(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2121,21 +2133,16 @@ private fun SideChoiceMenu(
 
 private const val MENU_EXIT_ANIMATION_MILLIS = 180
 private const val MENU_EXIT_WAIT_MILLIS = 200L
-private const val ROOT_MY_GALAXY_URL = "https://github.com/BuSung-dev/Root-My-Galaxy"
 
 @Composable
-private fun languageLabel(tag: String): String = when {
-    tag.startsWith("ko") -> stringResource(R.string.language_korean)
-    tag.startsWith("en") -> stringResource(R.string.language_english)
-    tag.startsWith("ja") -> stringResource(R.string.language_japanese)
-    tag.startsWith("zh-TW") -> stringResource(R.string.language_chinese_traditional)
-    tag.startsWith("zh") -> stringResource(R.string.language_chinese)
-    tag.startsWith("tr") -> stringResource(R.string.language_turkish)
-    tag.startsWith("pt-BR") -> stringResource(R.string.language_brazillian_portuguese)
-    tag.startsWith("ru") -> stringResource(R.string.language_russian)
-    tag.startsWith("vi") -> stringResource(R.string.language_vietnamese)
-    tag.startsWith("uz") -> stringResource(R.string.language_uzbek)
-    else -> stringResource(R.string.language_system)
+private fun languageLabel(tag: String): String =
+    languageOptions.firstOrNull { languageMatches(it, tag) }
+        ?.let { stringResource(it.label) }
+        ?: stringResource(R.string.language_system)
+
+private fun languageMatches(option: LanguageOption, currentTag: String): Boolean {
+    if (option.tag.isEmpty()) return currentTag.isEmpty()
+    return currentTag == option.tag || currentTag.startsWith("$option.tag-")
 }
 
 @Composable

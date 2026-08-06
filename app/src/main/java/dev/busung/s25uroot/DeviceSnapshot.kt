@@ -16,9 +16,6 @@ data class DeviceSnapshot(
     val abi: String,
     val pageSize: Long,
 ) {
-    val targetLabel: String
-        get() = "$kernelRelease / $buildId"
-
     val kernelVersion: String
         get() = kernelRelease.takeWhile { it.isDigit() || it == '.' }
 
