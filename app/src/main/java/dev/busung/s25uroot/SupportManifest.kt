@@ -43,6 +43,26 @@ data class TargetProfile(
             sdk == snapshot.sdk &&
             abi == snapshot.abi &&
             pageSize == snapshot.pageSize
+
+    // --- Bridge properties for v3 UI compatibility ---
+
+    val displayName: String
+        get() = "$model $kernelRelease"
+
+    val models: List<String>
+        get() = listOf(model)
+
+    val supportedModels: String
+        get() = model
+
+    val supportedKernelVersions: String
+        get() = "$kernelRelease / $kernelBuildVersion"
+
+    fun matchesDevice(snapshot: DeviceSnapshot): Boolean =
+        model.equals(snapshot.model, ignoreCase = true)
+
+    fun matchesKernelVersion(snapshot: DeviceSnapshot): Boolean =
+        matchesKernel(snapshot)
 }
 
 data class SupportManifest(
