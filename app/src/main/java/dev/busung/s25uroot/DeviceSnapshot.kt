@@ -20,6 +20,9 @@ data class DeviceSnapshot(
     val targetLabel: String
         get() = "$kernelRelease / $buildId"
 
+    val kernelVersion: String
+        get() = kernelRelease.takeWhile { it.isDigit() || it == '.' }
+
     companion object {
         fun current(): DeviceSnapshot {
             val uname = Os.uname()

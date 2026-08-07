@@ -4,7 +4,7 @@
 
 
 Root My Galaxy is a one-click installer for explicitly
-supported Samsung firmware builds. The application itself is kept separate
+supported Samsung model and kernel combinations. The application itself is kept separate
 from device offsets, native exploit payloads, and KernelSU build artifacts.
 
 
@@ -20,9 +20,10 @@ The device feed and native payloads are maintained in
 <img width="200" alt="KakaoTalk_20260718_171127319" src="https://github.com/user-attachments/assets/8dde0443-12cf-4058-ba76-0337aefb92a0" />
 <img width="200" alt="KakaoTalk_20260718_171030202" src="https://github.com/user-attachments/assets/f656e8af-60a6-4fcb-a3db-d4232bede613" />
 
-The app automatically selects an exact match for the kernel release,
-full build display ID, SDK, ABI, and page size. Advanced mode can select a
-profile manually and presents separate kernel-release and build warnings.
+The app selects a payload whose model list and three-part kernel version match
+the phone. For example, `6.6.98-android15-8-...` matches `6.6.98`. Advanced
+mode filters the catalog by both values and allows manual selection with model
+and kernel-version warnings.
 
 The S938B profile `pa3q-S938BXXS9CZE1` has been validated on a matching
 `SM-S938B` device. Its payloads and KernelSU artifacts are published in the
