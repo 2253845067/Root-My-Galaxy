@@ -44,7 +44,7 @@ jobs:
           KEYSTORE_PASSWORD: android
           KEY_ALIAS: release
           KEY_PASSWORD: android
-        run: ./gradlew assembleRelease --no-daemon
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
 
       - name: Prepare artifacts
         env:
