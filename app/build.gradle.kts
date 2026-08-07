@@ -26,6 +26,25 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = rootProject.file("release.keystore")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "release"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
