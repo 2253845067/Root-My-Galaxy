@@ -35,7 +35,7 @@ data class TargetProfile(
     fun matchesKernel(snapshot: DeviceSnapshot): Boolean =
         kernelRelease == snapshot.kernelRelease &&
             normalizedKernelBuildVersion(kernelBuildVersion) ==
-                normalizedKernelBuildVersion(snapshot.kernelBuildVersion)
+                normalizedKernelBuildVersion(snapshot.kernelVersionInfo)
 
     fun matches(snapshot: DeviceSnapshot): Boolean =
         matchesKernel(snapshot) &&
