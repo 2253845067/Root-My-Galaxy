@@ -1,6 +1,8 @@
 name: Build & Release APK
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -58,6 +60,16 @@ jobs:
           echo "- File: \`RootMyGalaxy-${TAG}.apk\`" >> $GITHUB_STEP_SUMMARY
           echo "- Size: $(du -h RootMyGalaxy-${TAG}.apk | cut -f1)" >> $GITHUB_STEP_SUMMARY
           echo "- SHA256: \`$(cut -d' ' -f1 RootMyGalaxy-${TAG}.apk.sha256)\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Delete existing release and tag if present
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking for existing release with tag $TAG..."
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null && echo "Deleted existing release and tag." || echo "No existing release found, proceeding."
+          # Also ensure the tag is gone from remote (in case release was deleted but tag lingered)
+          git push --delete origin "$TAG" 2>/dev/null && echo "Deleted lingering remote tag." || echo "No lingering remote tag."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
