@@ -19,6 +19,10 @@ data class VerifiedPayloads(
 class PayloadRepository(private val context: Context) {
     fun loadTargets(): List<TargetProfile> {
         val commit = resolveMainCommit()
+        // Keep v2 as the active feed: it carries the exact S938B profile and
+        // its device-tested payload/module pair. SupportManifest also accepts
+        // v3 for compatibility, but a generic v3 S25 entry must not replace
+        // the exact S938B artifact.
         val manifestBytes = downloadBytes(rawUrl(commit, "support/targets-v2.json"), MAX_MANIFEST_BYTES)
         return SupportManifest.parse(manifestBytes).targets.map { profile -> profile.copy(
             exploit = profile.exploit.copy(url = pinArtifactUrl(profile.exploit.url, commit)),

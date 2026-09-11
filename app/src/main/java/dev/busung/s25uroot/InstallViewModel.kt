@@ -51,6 +51,13 @@ data class TargetCatalogUiState(
 
 private data class CommandResult(val code: Int, val output: String)
 
+/** A reusable P0 result includes the oracle's page references, not only KASLR. */
+private data class P0CacheState(
+    val offset: String,
+    val gatePage: String,
+    val probePage: String,
+)
+
 /**
  * Payloads are truncated to a fixed release size, so a rebuild of a target --
  * or a different target padded to the same size -- has exactly the length of
@@ -195,7 +202,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 appendLog(app.getString(R.string.log_download_verified))
 
                 setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
-                executeExploit(payloads.exploit)
+                executeExploit(
+                    payloads.exploit,
+                    freshP0Session = payloads.profile.requiresFreshP0Session,
+                )
 
                 setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
                 installKernelSu(payloads)
@@ -213,7 +223,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private suspend fun executeExploit(payload: File) {
+    private suspend fun executeExploit(payload: File, freshP0Session: Boolean) {
         val shizuku = shizukuEnabled()
         val logFile = if (shizuku) File(SHIZUKU_LOG_PATH) else File(app.filesDir, "exploit.log")
         if (shizuku) {
@@ -227,27 +237,49 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
         val logPrefix = mutableState.value.log
         val bootToken = currentBootToken()
-        val process = if (shizuku) {
-            val stagedPayload = shizukuStage(payload, SHIZUKU_PAYLOAD_PATH, "755")
-            ShizukuController.exec(
-                arrayOf("/system/bin/sh", "-c", "true"),
-                shizukuEnvironment(bootToken, stagedPayload.absolutePath, helper.absolutePath),
-            )
-        } else {
-            val processBuilder = ProcessBuilder(
-                helper.absolutePath,
-                "--run-payload",
-                payload.absolutePath,
-                helper.absolutePath,
-                logFile.absolutePath,
-            ).redirectErrorStream(true)
-            processBuilder.environment().apply {
-                put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
-                put("P0_ATTEMPT_TIMEOUT_SEC", P0_ATTEMPT_TIMEOUT_SEC)
-                put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", EXPLOIT_ATTEMPT_TIMEOUT_SEC)
-                cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
+        val cachedState = if (freshP0Session) null else cachedP0State(bootToken)
+        var exploitSucceeded = false
+        try {
+            warmUpAllocator(shizuku)
+        } catch (error: Throwable) {
+            clearP0Cache(bootToken)
+            throw error
+        }
+        val process = try {
+            if (shizuku) {
+                val stagedPayload = shizukuStage(payload, SHIZUKU_PAYLOAD_PATH, "755")
+                ShizukuController.exec(
+                    arrayOf("/system/bin/sh", "-c", "true"),
+                    shizukuEnvironment(
+                        bootToken,
+                        stagedPayload.absolutePath,
+                        helper.absolutePath,
+                        useP0Cache = !freshP0Session,
+                    ),
+                )
+            } else {
+                val processBuilder = ProcessBuilder(
+                    helper.absolutePath,
+                    "--run-payload",
+                    payload.absolutePath,
+                    helper.absolutePath,
+                    logFile.absolutePath,
+                ).redirectErrorStream(true)
+                processBuilder.environment().apply {
+                    put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
+                    put("P0_ATTEMPT_TIMEOUT_SEC", P0_ATTEMPT_TIMEOUT_SEC)
+                    put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", EXPLOIT_ATTEMPT_TIMEOUT_SEC)
+                    cachedState?.let { state ->
+                        put(P0_OFFSET_ENV, state.offset)
+                        put(P0_GATE_PAGE_ENV, state.gatePage)
+                        put(P0_PROBE_PAGE_ENV, state.probePage)
+                    }
+                }
+                processBuilder.start()
             }
-            processBuilder.start()
+        } catch (error: Throwable) {
+            clearP0Cache(bootToken)
+            throw error
         }
         val captured = StringBuilder()
         val readLog: () -> String = if (shizuku) {
@@ -266,7 +298,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             while (process.isAlive) {
                 val rawLog = readLog()
                 if (rawLog != lastRawLog) {
-                    cacheP0Offset(bootToken, rawLog)
                     publishExploitLog(logPrefix, rawLog)
                     lastRawLog = rawLog
                     lastProgressAt = SystemClock.elapsedRealtime()
@@ -283,7 +314,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
             val exitCode = process.waitFor()
             val rawLog = readLog()
-            cacheP0Offset(bootToken, rawLog)
             publishExploitLog(logPrefix, rawLog)
             // Both transports drain into `captured` during the poll loop, so
             // this never blocks on a child still holding the pipe open.
@@ -298,14 +328,63 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             require(rawLog.contains("exploit completed") && rawLog.contains("done=1 root=1")) {
                 app.getString(R.string.error_success_marker)
             }
+            // Only a verified root result may seed the next run's forced
+            // slide. Failed attempts can leave incomplete/unsafe P0 state.
+            if (freshP0Session || !cacheP0State(bootToken, rawLog)) {
+                clearP0Cache(bootToken)
+            }
+            exploitSucceeded = true
         } finally {
             if (process.isAlive) {
                 process.destroy()
                 delay(500.milliseconds)
                 if (process.isAlive) process.destroyForcibly()
             }
+            if (!exploitSucceeded) clearP0Cache(bootToken)
         }
         appendLog(app.getString(R.string.log_bootstrap_root))
+    }
+
+    /**
+     * Match the standalone tool's post-boot allocator warm-up. Keeping this
+     * outside the payload makes both Shizuku and app-domain launches use the
+     * same race preparation without changing target-specific native code.
+     */
+    private suspend fun warmUpAllocator(shizuku: Boolean) {
+        val process = if (shizuku) {
+            ShizukuController.exec(
+                arrayOf("/system/bin/sh", "-c", ALLOCATOR_WARMUP_COMMAND),
+            )
+        } else {
+            ProcessBuilder("/system/bin/sh", "-c", ALLOCATOR_WARMUP_COMMAND)
+                .redirectErrorStream(true)
+                .start()
+        }
+        val captured = StringBuilder()
+        val startedAt = SystemClock.elapsedRealtime()
+        try {
+            while (process.isAlive) {
+                drainProcessOutput(process, captured)
+                require(SystemClock.elapsedRealtime() - startedAt < ALLOCATOR_WARMUP_TIMEOUT_MILLIS) {
+                    app.getString(
+                        R.string.error_helper_timeout,
+                        captured.toString().trim().takeIf(String::isNotBlank)
+                            ?.let { ": $it" } ?: "",
+                    )
+                }
+                delay(ALLOCATOR_WARMUP_POLL_INTERVAL)
+            }
+            drainProcessOutput(process, captured)
+            require(process.waitFor() == 0) {
+                app.getString(R.string.error_payload_exit, process.exitValue(), "")
+            }
+        } finally {
+            if (process.isAlive) {
+                process.destroy()
+                delay(100.milliseconds)
+                if (process.isAlive) process.destroyForcibly()
+            }
+        }
     }
 
     private fun drainProcessOutput(process: Process, buffer: StringBuilder): String {
@@ -397,27 +476,50 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             .takeIf(String::isNotBlank)
     }.getOrNull()
 
-    private fun cachedP0Offset(bootToken: String?): String? {
+    private fun cachedP0State(bootToken: String?): P0CacheState? {
         if (bootToken == null) return null
         val stored = app.getSharedPreferences(P0_CACHE, Application.MODE_PRIVATE)
         if (stored.getString(P0_CACHE_BOOT_TOKEN, null) != bootToken) return null
-        return stored.getString(P0_CACHE_OFFSET, null)
+        val offset = stored.getString(P0_CACHE_OFFSET, null) ?: return null
+        val gatePage = stored.getString(P0_CACHE_GATE_PAGE, null) ?: return null
+        val probePage = stored.getString(P0_CACHE_PROBE_PAGE, null) ?: return null
+        return P0CacheState(offset, gatePage, probePage)
     }
 
-    private fun cacheP0Offset(bootToken: String?, log: String) {
-        if (bootToken == null) return
-        val match = P0_OFFSET_PATTERN.findAll(log).lastOrNull() ?: return
-        val offset = match.groupValues[1].toLongOrNull(16) ?: return
-        if (offset !in 0..P0_OFFSET_MAX || offset and P0_OFFSET_MASK != 0L) return
+    private fun cacheP0State(bootToken: String?, log: String): Boolean {
+        if (bootToken == null) return false
+        val offsetMatch = P0_OFFSET_PATTERN.findAll(log).lastOrNull() ?: return false
+        val gateMatch = P0_GATE_PAGE_PATTERN.findAll(log).lastOrNull() ?: return false
+        val probeMatch = P0_PROBE_PAGE_PATTERN.findAll(log).lastOrNull() ?: return false
+        val offset = offsetMatch.groupValues[1].toLongOrNull(16) ?: return false
+        if (offset !in 0..P0_OFFSET_MAX || offset and P0_OFFSET_MASK != 0L) return false
+        val gatePage = gateMatch.groupValues[1].toULongOrNull(16) ?: return false
+        val probePage = probeMatch.groupValues[1].toULongOrNull(16) ?: return false
+        if (gatePage == 0UL || probePage == 0UL) return false
         val value = "0x${offset.toString(16)}"
+        val gateValue = "0x${gatePage.toString(16)}"
+        val probeValue = "0x${probePage.toString(16)}"
         val stored = app.getSharedPreferences(P0_CACHE, Application.MODE_PRIVATE)
         if (stored.getString(P0_CACHE_BOOT_TOKEN, null) == bootToken &&
-            stored.getString(P0_CACHE_OFFSET, null) == value
-        ) return
+            stored.getString(P0_CACHE_OFFSET, null) == value &&
+            stored.getString(P0_CACHE_GATE_PAGE, null) == gateValue &&
+            stored.getString(P0_CACHE_PROBE_PAGE, null) == probeValue
+        ) return true
         stored.edit()
             .putString(P0_CACHE_BOOT_TOKEN, bootToken)
             .putString(P0_CACHE_OFFSET, value)
+            .putString(P0_CACHE_GATE_PAGE, gateValue)
+            .putString(P0_CACHE_PROBE_PAGE, probeValue)
             .apply()
+        return true
+    }
+
+    private fun clearP0Cache(bootToken: String?) {
+        if (bootToken == null) return
+        val stored = app.getSharedPreferences(P0_CACHE, Application.MODE_PRIVATE)
+        if (stored.getString(P0_CACHE_BOOT_TOKEN, null) == bootToken) {
+            stored.edit().clear().apply()
+        }
     }
 
     private fun helperFile(): File =
@@ -449,13 +551,18 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         bootToken: String?,
         payloadPath: String,
         helperPath: String,
+        useP0Cache: Boolean = true,
     ): Array<String> = buildList {
         add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
         add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
         add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
         add("CVE43499_ROOT_HELPER=$helperPath")
         add("LD_PRELOAD=$payloadPath")
-        cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
+        if (useP0Cache) cachedP0State(bootToken)?.let { state ->
+            add("$P0_OFFSET_ENV=${state.offset}")
+            add("$P0_GATE_PAGE_ENV=${state.gatePage}")
+            add("$P0_PROBE_PAGE_ENV=${state.probePage}")
+        }
     }.toTypedArray()
 
     /**
@@ -562,13 +669,20 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_STALL_MILLIS = 90_000L
         private const val EXPLOIT_TOTAL_MILLIS = 900_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
+        private const val ALLOCATOR_WARMUP_TIMEOUT_MILLIS = 15_000L
+        private const val ALLOCATOR_WARMUP_COMMAND =
+            "i=0; while [ \$i -lt 400 ]; do /system/bin/true; i=\$((i+1)); done"
         private const val INSTALL_RECEIPT = "install_receipt"
         private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
         private const val RECEIPT_VERIFIED = "verified"
         private const val P0_CACHE = "p0_cache"
         private const val P0_CACHE_BOOT_TOKEN = "kernel_boot_id"
         private const val P0_CACHE_OFFSET = "offset"
+        private const val P0_CACHE_GATE_PAGE = "gate_page"
+        private const val P0_CACHE_PROBE_PAGE = "probe_page"
         private const val P0_OFFSET_ENV = "SLIDE_P0_OFFSET"
+        private const val P0_GATE_PAGE_ENV = "P0_GATE_PAGE_STRUCT"
+        private const val P0_PROBE_PAGE_ENV = "P0_PROBE_PAGE_STRUCT"
         private const val P0_OFFSET_MAX = 0x1f0000L
         private const val P0_OFFSET_MASK = 0xffffL
         private const val SHIZUKU_LOG_PATH = "/data/local/tmp/ksu-exploit.log"
@@ -580,9 +694,16 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private val LOG_POLL_INTERVAL = 250.milliseconds
         private val HELPER_POLL_INTERVAL = 250.milliseconds
         private val SHIZUKU_LOG_POLL_INTERVAL = 1.seconds
+        private val ALLOCATOR_WARMUP_POLL_INTERVAL = 100.milliseconds
         private val ANSI_ESCAPE = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
         private val P0_OFFSET_PATTERN = Regex(
             "slide-kaslr-ok[^\\n]*slide=([0-9a-fA-F]{16})",
+        )
+        private val P0_GATE_PAGE_PATTERN = Regex(
+            "p0 physical restore triggers[^\\n]*gate_page=([0-9a-fA-F]{16})",
+        )
+        private val P0_PROBE_PAGE_PATTERN = Regex(
+            "p0 physical restore triggers[^\\n]*probe_page=([0-9a-fA-F]{16})",
         )
 
         private fun stripAnsi(value: String): String = ANSI_ESCAPE.replace(value, "").replace("\r", "")
