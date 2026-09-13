@@ -107,7 +107,7 @@
     <string name="log_ksu_staged">[+] KernelSU-Staging abgeschlossen</string>
     <string name="log_ksu_control_verified">[+] KernelSU-Steuerungskanal verifiziert</string>
     <string name="error_helper_unavailable">Bootstrap-Helfer ist nicht ausführbar</string>
-    <string name="error_exploit_stalled">Exploit-Log ist seit 90 Sekunden nicht vorangeschritten</string>
+    <string name="error_exploit_stalled">Exploit-Log ist seit 180 Sekunden nicht vorangeschritten</string>
     <string name="error_exploit_timeout">Exploit hat das 15-Minuten-Limit überschritten</string>
     <string name="error_payload_exit">Payload fehlgeschlagen: %1$d%2$s</string>
     <string name="error_success_marker">Erfolgsmarker für den Exploit wurden nicht gefunden</string>

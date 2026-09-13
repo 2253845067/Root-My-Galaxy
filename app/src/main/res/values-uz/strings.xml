@@ -105,7 +105,7 @@
     <string name="log_ksu_staged">[+] KernelSU tayyorgarligi yakunlandi</string>
     <string name="log_ksu_control_verified">[+] KernelSU boshqaruv kanali tekshirildi</string>
     <string name="error_helper_unavailable">Bootstrap yordamchisini ishga tushirib bo\'lmaydi</string>
-    <string name="error_exploit_stalled">Eksployt jurnali 90 soniya davomida yangilanmadi</string>
+    <string name="error_exploit_stalled">Eksployt jurnali 180 soniya davomida yangilanmadi</string>
     <string name="error_exploit_timeout">Eksployt 15 daqiqalik vaqt chegarasidan oshib ketdi</string>
     <string name="error_payload_exit">Paketni ishga tushirishda xatolik yuz berdi: %1$d%2$s</string>
     <string name="error_success_marker">Eksployt muvaffaqiyatli yakunlanganligi haqida belgilar topilmadi</string>

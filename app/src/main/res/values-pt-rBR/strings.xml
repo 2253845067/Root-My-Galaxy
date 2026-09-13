@@ -89,7 +89,7 @@
     <string name="log_ksu_staged">[+] Preparação do KernelSU completa</string>
     <string name="log_ksu_control_verified">[+] Canal de controle do KernelSU verificado</string>
     <string name="error_helper_unavailable">O helper de bootstrap não é executável</string>
-    <string name="error_exploit_stalled">O log do exploit não avançou por 90 segundos</string>
+    <string name="error_exploit_stalled">O log do exploit não avançou por 180 segundos</string>
     <string name="error_exploit_timeout">O exploit excedeu o limite de 15 minutos</string>
     <string name="error_payload_exit">Execução do payload falhou: %1$d%2$s</string>
     <string name="error_success_marker">Marcadores de sucesso do exploit não foram encontrados</string>

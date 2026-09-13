@@ -6,11 +6,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
@@ -264,6 +267,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                     payload.absolutePath,
                     helper.absolutePath,
                     logFile.absolutePath,
+                    "--app-managed",
                 ).redirectErrorStream(true)
                 processBuilder.environment().apply {
                     put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
@@ -281,66 +285,93 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             clearP0Cache(bootToken)
             throw error
         }
-        val captured = StringBuilder()
-        val readLog: () -> String = if (shizuku) {
-            { drainProcessOutput(process, captured) }
-        } else {
-            // Keep draining stdout while polling: if the helper fills the OS
-            // pipe buffer it blocks on write and stops making log progress,
-            // which would trip the stall detector spuriously.
-            { drainProcessOutput(process, captured); logFile.readTextIfPresent() }
-        }
+        coroutineScope {
+            val captured = StringBuffer()
+            // A blocking reader owns each process stream. Polling available()
+            // is not reliable for Shizuku's ParcelFileDescriptor pipes and can
+            // make a live payload look silent to the stall detector.
+            val outputReaders = listOf(
+                launch(Dispatchers.IO) {
+                    drainStreamBlocking(process.inputStream, captured)
+                },
+                launch(Dispatchers.IO) {
+                    drainStreamBlocking(process.errorStream, captured)
+                },
+            )
+            val readLog: () -> String = if (shizuku) {
+                { captured.toString() }
+            } else {
+                { logFile.readTextIfPresent() }
+            }
 
-        try {
-            val startedAt = SystemClock.elapsedRealtime()
-            var lastProgressAt = startedAt
-            var lastRawLog = ""
-            while (process.isAlive) {
+            try {
+                val startedAt = SystemClock.elapsedRealtime()
+                var lastProgressAt = startedAt
+                var lastUiHeartbeatAt = startedAt
+                var lastRawLog = ""
+                while (process.isAlive) {
+                    val rawLog = readLog()
+                    val now = SystemClock.elapsedRealtime()
+                    if (rawLog != lastRawLog) {
+                        publishExploitLog(logPrefix, rawLog)
+                        lastRawLog = rawLog
+                        lastProgressAt = now
+                        lastUiHeartbeatAt = now
+                    } else if (now - lastUiHeartbeatAt >= EXPLOIT_UI_HEARTBEAT_MILLIS) {
+                        publishExploitLog(
+                            logPrefix,
+                            rawLog,
+                            app.getString(R.string.log_exploit_heartbeat),
+                            persistHistory = false,
+                        )
+                        lastUiHeartbeatAt = now
+                    }
+                    require(now - lastProgressAt < EXPLOIT_STALL_MILLIS) {
+                        app.getString(R.string.error_exploit_stalled)
+                    }
+                    require(now - startedAt < EXPLOIT_TOTAL_MILLIS) {
+                        app.getString(R.string.error_exploit_timeout)
+                    }
+                    delay(if (shizuku) SHIZUKU_LOG_POLL_INTERVAL else LOG_POLL_INTERVAL)
+                }
+
+                val exitCode = process.waitFor()
+                withTimeoutOrNull(OUTPUT_READER_TIMEOUT_MILLIS) {
+                    outputReaders.joinAll()
+                }
                 val rawLog = readLog()
-                if (rawLog != lastRawLog) {
-                    publishExploitLog(logPrefix, rawLog)
-                    lastRawLog = rawLog
-                    lastProgressAt = SystemClock.elapsedRealtime()
+                publishExploitLog(logPrefix, rawLog)
+                val earlyOutput = captured.toString().trim()
+                require(exitCode == 0) {
+                    app.getString(
+                        R.string.error_payload_exit,
+                        exitCode,
+                        earlyOutput.takeIf(String::isNotBlank)?.let { " ($it)" } ?: "",
+                    )
                 }
-                val now = SystemClock.elapsedRealtime()
-                require(now - lastProgressAt < EXPLOIT_STALL_MILLIS) {
-                    app.getString(R.string.error_exploit_stalled)
+                require(rawLog.contains("exploit completed") && rawLog.contains("done=1 root=1")) {
+                    app.getString(R.string.error_success_marker)
                 }
-                require(now - startedAt < EXPLOIT_TOTAL_MILLIS) {
-                    app.getString(R.string.error_exploit_timeout)
+                // Only a verified root result may seed the next run's forced
+                // slide. Failed attempts can leave incomplete/unsafe P0 state.
+                if (freshP0Session || !cacheP0State(bootToken, rawLog)) {
+                    clearP0Cache(bootToken)
                 }
-                delay(if (shizuku) SHIZUKU_LOG_POLL_INTERVAL else LOG_POLL_INTERVAL)
+                exploitSucceeded = true
+            } finally {
+                if (process.isAlive) {
+                    process.destroy()
+                    delay(500.milliseconds)
+                    if (process.isAlive) process.destroyForcibly()
+                }
+                runCatching { process.inputStream.close() }
+                runCatching { process.errorStream.close() }
+                outputReaders.forEach { it.cancel() }
+                withTimeoutOrNull(OUTPUT_READER_TIMEOUT_MILLIS) {
+                    outputReaders.joinAll()
+                }
+                if (!exploitSucceeded) clearP0Cache(bootToken)
             }
-
-            val exitCode = process.waitFor()
-            val rawLog = readLog()
-            publishExploitLog(logPrefix, rawLog)
-            // Both transports drain into `captured` during the poll loop, so
-            // this never blocks on a child still holding the pipe open.
-            val earlyOutput = captured.toString().trim()
-            require(exitCode == 0) {
-                app.getString(
-                    R.string.error_payload_exit,
-                    exitCode,
-                    earlyOutput.takeIf(String::isNotBlank)?.let { " ($it)" } ?: "",
-                )
-            }
-            require(rawLog.contains("exploit completed") && rawLog.contains("done=1 root=1")) {
-                app.getString(R.string.error_success_marker)
-            }
-            // Only a verified root result may seed the next run's forced
-            // slide. Failed attempts can leave incomplete/unsafe P0 state.
-            if (freshP0Session || !cacheP0State(bootToken, rawLog)) {
-                clearP0Cache(bootToken)
-            }
-            exploitSucceeded = true
-        } finally {
-            if (process.isAlive) {
-                process.destroy()
-                delay(500.milliseconds)
-                if (process.isAlive) process.destroyForcibly()
-            }
-            if (!exploitSucceeded) clearP0Cache(bootToken)
         }
         appendLog(app.getString(R.string.log_bootstrap_root))
     }
@@ -397,6 +428,21 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun drainStreamBlocking(stream: InputStream, buffer: StringBuffer) {
+        val chars = CharArray(4096)
+        runCatching {
+            stream.bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val count = reader.read(chars)
+                    if (count < 0) break
+                    synchronized(buffer) {
+                        buffer.append(chars, 0, count)
+                    }
+                }
+            }
+        }
+    }
+
     private fun drainStream(stream: InputStream, buffer: StringBuilder) {
         val data = ByteArray(4096)
         while (stream.available() > 0) {
@@ -406,13 +452,19 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun publishExploitLog(prefix: String, rawLog: String) {
+    private fun publishExploitLog(
+        prefix: String,
+        rawLog: String,
+        status: String? = null,
+        persistHistory: Boolean = true,
+    ) {
         mutableState.value = mutableState.value.copy(
-            log = listOf(prefix, stripAnsi(rawLog))
+            log = listOf(prefix, stripAnsi(rawLog), status)
+                .filterNotNull()
                 .filter(String::isNotBlank)
                 .joinToString("\n"),
         )
-        updateHistoryLog()
+        if (persistHistory) updateHistoryLog()
     }
 
     private suspend fun installKernelSu(payloads: VerifiedPayloads) {
@@ -556,6 +608,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
         add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
         add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
+        add("CVE43499_APP_MANAGED=1")
         add("CVE43499_ROOT_HELPER=$helperPath")
         add("LD_PRELOAD=$payloadPath")
         if (useP0Cache) cachedP0State(bootToken)?.let { state ->
@@ -666,8 +719,12 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_ATTEMPTS = "24"
         private const val P0_ATTEMPT_TIMEOUT_SEC = "45"
         private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "120"
-        private const val EXPLOIT_STALL_MILLIS = 90_000L
+        // The payload intentionally waits up to 120 seconds after boot and a
+        // native attempt may also use the 120-second attempt timeout.
+        private const val EXPLOIT_STALL_MILLIS = 180_000L
         private const val EXPLOIT_TOTAL_MILLIS = 900_000L
+        private const val EXPLOIT_UI_HEARTBEAT_MILLIS = 10_000L
+        private const val OUTPUT_READER_TIMEOUT_MILLIS = 2_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
         private const val ALLOCATOR_WARMUP_TIMEOUT_MILLIS = 15_000L
         private const val ALLOCATOR_WARMUP_COMMAND =
