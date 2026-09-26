@@ -2,6 +2,7 @@ package dev.busung.s25uroot
 
 import android.app.Application
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -95,6 +96,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private var discoveryJob: Job? = null
     private var installJob: Job? = null
     private var activeHistoryEntry: InstallHistoryEntry? = null
+    private var lastHistoryPersistAt = 0L
 
     @Volatile
     private var activeRunShizuku: Boolean? = null
@@ -108,6 +110,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     fun refresh() {
         if (installJob?.isActive == true) return
+        purgeStaleBootState()
         mutableHistory.value = historyStore.load()
         discoveryJob?.cancel()
         discoveryJob = viewModelScope.launch(Dispatchers.IO) {
@@ -168,7 +171,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun install(profileId: String? = null) {
-        if (installJob?.isActive == true || mutableState.value.phase == InstallPhase.Installed) return
+        // An explicit install request always wins.  The cached "Installed"
+        // phase comes from a receipt that only says this boot reached KernelSU
+        // once, and temporary root can be gone without a reboot; refusing here
+        // is what forced users to clear app data before they could root again.
+        if (installJob?.isActive == true) return
         discoveryJob?.cancel()
         installJob = viewModelScope.launch(Dispatchers.IO) {
             mutableState.value = InstallUiState(
@@ -464,7 +471,16 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 .filter(String::isNotBlank)
                 .joinToString("\n"),
         )
-        if (persistHistory) updateHistoryLog()
+        if (!persistHistory) return
+        // Persisting the whole history entry rewrites and fsyncs the complete
+        // log.  Doing that on every poll makes the app compete with the payload
+        // for CPU and storage at the exact moment the race needs a quiet
+        // machine, so intermediate writes are throttled; finishHistory() always
+        // stores the final log.
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastHistoryPersistAt < HISTORY_PERSIST_INTERVAL_MILLIS) return
+        lastHistoryPersistAt = now
+        updateHistoryLog()
     }
 
     private suspend fun installKernelSu(payloads: VerifiedPayloads) {
@@ -521,12 +537,48 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         require(stored) { app.getString(R.string.error_receipt) }
     }
 
+    /**
+     * Identifies the current boot.  `/proc/sys/kernel/random/boot_id` is the
+     * precise answer, but a device that denies the read would otherwise make
+     * every cached value unusable (and `storeInstallReceipt` throw after an
+     * otherwise successful run), so the boot counter is the fallback.
+     */
     private fun currentBootToken(): String? = runCatching {
         File("/proc/sys/kernel/random/boot_id")
             .readText(Charsets.US_ASCII)
             .trim()
             .takeIf(String::isNotBlank)
+    }.getOrNull() ?: runCatching {
+        Settings.Global.getInt(app.contentResolver, Settings.Global.BOOT_COUNT, -1)
+            .takeIf { it >= 0 }
+            ?.toString()
     }.getOrNull()
+
+    /**
+     * Every cached result in this app belongs to exactly one boot: the P0 slide
+     * and its oracle page references are only valid for the boot that
+     * discovered them, and the KernelSU receipt only records that this boot
+     * reached KernelSU once.  Drop all of it as soon as the boot token changes
+     * so a reboot can never leave a stale entry behind that blocks or
+     * misdirects the next run.
+     */
+    private fun purgeStaleBootState() {
+        val bootToken = currentBootToken() ?: return
+        val marker = app.getSharedPreferences(BOOT_STATE, Application.MODE_PRIVATE)
+        if (marker.getString(BOOT_STATE_TOKEN, null) == bootToken) return
+        val p0Cache = app.getSharedPreferences(P0_CACHE, Application.MODE_PRIVATE)
+        val receipt = app.getSharedPreferences(INSTALL_RECEIPT, Application.MODE_PRIVATE)
+        // Never discard an entry that already belongs to this boot: the marker
+        // can be missing on the first launch after the app was installed, and
+        // dropping a valid receipt there would hide a live root.
+        if (p0Cache.getString(P0_CACHE_BOOT_TOKEN, null) != bootToken) {
+            p0Cache.edit().clear().apply()
+        }
+        if (receipt.getString(RECEIPT_BOOT_TOKEN, null) != bootToken) {
+            receipt.edit().clear().apply()
+        }
+        marker.edit().putString(BOOT_STATE_TOKEN, bootToken).apply()
+    }
 
     private fun cachedP0State(bootToken: String?): P0CacheState? {
         if (bootToken == null) return null
@@ -724,12 +776,15 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_STALL_MILLIS = 180_000L
         private const val EXPLOIT_TOTAL_MILLIS = 900_000L
         private const val EXPLOIT_UI_HEARTBEAT_MILLIS = 10_000L
+        private const val HISTORY_PERSIST_INTERVAL_MILLIS = 5_000L
         private const val OUTPUT_READER_TIMEOUT_MILLIS = 2_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
         private const val ALLOCATOR_WARMUP_TIMEOUT_MILLIS = 15_000L
         private const val ALLOCATOR_WARMUP_COMMAND =
             "i=0; while [ \$i -lt 400 ]; do /system/bin/true; i=\$((i+1)); done"
         private const val INSTALL_RECEIPT = "install_receipt"
+        private const val BOOT_STATE = "boot_state"
+        private const val BOOT_STATE_TOKEN = "kernel_boot_id"
         private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
         private const val RECEIPT_VERIFIED = "verified"
         private const val P0_CACHE = "p0_cache"
